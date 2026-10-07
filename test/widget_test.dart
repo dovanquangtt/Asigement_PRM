@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quanlinhansunhahang/main.dart';
+import 'package:quanlinhansunhahang/app.dart';
+import 'package:quanlinhansunhahang/screens/workspace_screen.dart';
 
 void main() {
   testWidgets('Pixel: login, navigation and attendance flow', (tester) async {
