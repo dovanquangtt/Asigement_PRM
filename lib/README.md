@@ -1,27 +1,15 @@
-# Cấu trúc frontend
+﻿# Mã ứng dụng mobile
 
-main.dart chỉ gọi runApp. app.dart thiết lập MaterialApp và màn hình đầu tiên.
+Luồng chạy hiện tại: main.dart → PrmApp → DatabaseStartup → LoginPage → Workspace.
 
-## Sửa ở đâu?
+- `services/local_database.dart`: sao chép và mở SQLite trên thiết bị.
+- `services/sample_data.dart`: dữ liệu tài khoản/hồ sơ mẫu.
+- `services/auth_service.dart`: kiểm tra users.password_hash bằng bcrypt, đọc vai trò và quyền từ database.
+- `services/workforce_repository.dart`: truy vấn dữ liệu theo quyền hiện tại; chỉ cho Nhân viên đọc lịch ca/phiếu lương của mình; lưu tài khoản và hồ sơ mới trong transaction.
+- `screens/login_screen.dart`: đăng nhập, không cho tự chọn vai trò.
+- `screens/workspace_screen.dart`: điều hướng và giao diện riêng theo vai trò, danh sách dữ liệu thật, form tạo tài khoản/thêm nhân viên, đăng xuất.
+- `theme/`, `widgets/`: giao diện dùng chung.
 
-| Cần sửa | File |
-| --- | --- |
-| Màu | theme/app_colors.dart |
-| Kiểu chữ, input, nút | theme/app_theme.dart |
-| Đăng nhập | screens/login_screen.dart |
-| Thanh điều hướng, ghép 4 tab | screens/workspace_screen.dart |
-| Trang chủ, thẻ ca, thao tác nhanh | screens/home_screen.dart |
-| Lịch và yêu cầu | screens/schedule_screen.dart |
-| Thu nhập, phiếu lương | screens/payroll_screen.dart |
-| Hồ sơ và đăng xuất | screens/profile_screen.dart |
-| Dữ liệu và trạng thái dùng chung | state/workspace_controller.dart |
-| Hộp thoại, thông báo, điều hướng chi tiết | services/workspace_actions.dart |
-| Thẻ, tiêu đề, thống kê, logo dùng chung | widgets/common_widgets.dart |
+Các file home_screen.dart, schedule_screen.dart, payroll_screen.dart, profile_screen.dart, workspace_controller.dart và workspace_actions.dart là giao diện demo cũ, không được Workspace hiện tại gọi tới. Các màn hình đang hoạt động dùng WorkforceRepository để đọc/ghi SQLite.
 
-## Luồng hoạt động
-
-LoginPage mở Workspace với vai trò đã chọn. Workspace tạo WorkspaceController và hủy nó khi rời màn hình. AnimatedBuilder lắng nghe controller, truyền cùng controller và actions vào 4 tab. Khi người dùng thao tác, actions mở hộp thoại; controller.update cập nhật dữ liệu và notifyListeners để giao diện vẽ lại. Các giá trị chỉ tồn tại trong phiên, chưa được lưu vào MySQL.
-
-Ví dụ: sửa màu nút tại theme; sửa thẻ điểm danh tại home_screen; sửa cách xác nhận điểm danh tại workspace_actions; sửa trạng thái entered/exited tại workspace_controller.
-
-Nhóm có thể chia sửa từng màn hình; thống nhất trước khi sửa controller hoặc widgets dùng chung. Không cần thêm thư viện quản lý state cho bản hiện tại. Sau này lớp truy cập API có thể đặt trong services, tách khỏi hộp thoại UI khi thêm backend.
+Xem README.md ở gốc dự án để biết cách chạy, tài khoản mẫu và phạm vi chức năng hiện có.

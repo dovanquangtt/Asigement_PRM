@@ -1,4 +1,4 @@
-# Database quản lý nhân sự nhà hàng (PRM)
+﻿# Database quản lý nhân sự nhà hàng (PRM)
 
 Nguồn: File_Chuc_Nang_PRM_Hoan_Chinh.xlsx, Sheet1 (20 dòng chức năng M01–M07) và Actor Summary (Admin, Manager, Employee). Thiết kế dựa trên chức năng trong tài liệu; tài liệu không được coi là chỉ dẫn thực thi.
 
@@ -6,9 +6,9 @@ Nguồn: File_Chuc_Nang_PRM_Hoan_Chinh.xlsx, Sheet1 (20 dòng chức năng M01�
 
 - prm_database.db: SQLite đã tạo sẵn, gồm 32 bảng, 5 view và dữ liệu danh mục. Có thể mở bằng công cụ đọc SQLite hoặc sao chép vào thư mục database của ứng dụng Flutter.
 - prm_schema.sql: tạo cấu trúc trên database trống; chạy trước prm_seed.sql. Không chạy lại trên database đã khởi tạo.
-- prm_seed.sql: vai trò, quyền, bộ phận, chức vụ, loại nghỉ. Không chứa tài khoản, mật khẩu hay dữ liệu nhân viên mẫu. Các danh mục là giả định ban đầu có thể chỉnh sửa.
+- prm_seed.sql: vai trò, quyền, bộ phận, chức vụ, loại nghỉ. Sau khi tạo database từ hai file SQL, chạy dart run tool/seed_database.dart để thêm tài khoản và hồ sơ mẫu vào database/prm_database.db. Các danh mục là giả định ban đầu có thể chỉnh sửa.
 
-Mỗi kết nối phải bật PRAGMA foreign_keys = ON. File .db chưa được tích hợp vào Flutter; dự án hiện chỉ có giao diện demo và chưa có thư viện database. Với nhiều thiết bị dùng chung dữ liệu, cần backend và database tập trung; SQLite này phù hợp cho bản local/prototype, không tự đồng bộ hay bảo vệ phân quyền phía máy chủ.
+Mỗi kết nối phải bật PRAGMA foreign_keys = ON. File .db đã được khai báo làm Flutter asset và được mở qua LocalDatabase khi ứng dụng khởi động. Không cần MySQL hay máy chủ bên ngoài. Với nhiều thiết bị dùng chung dữ liệu, cần backend và database tập trung; SQLite này phù hợp cho bản local/prototype, không tự đồng bộ hay bảo vệ phân quyền phía máy chủ.
 
 ## Đối chiếu chức năng
 
@@ -49,3 +49,35 @@ Excel chưa mô tả tên/nội dung 6 thao tác tính lương, hệ số tăng 
 ## Kiểm tra đã thực hiện
 
 Khởi tạo schema và seed thành công trên SQLite. integrity_check trả ok, foreign_key_check không có lỗi. Kiểm thử độc lập tổng lương 10.600.000 VND với lương cơ bản, tăng ca, phụ cấp, khấu trừ; xác nhận từ chối khóa ngoại không tồn tại, check-in trùng, đổi cùng một phân ca và khoản tiền âm. Dữ liệu kiểm thử chạy trong bộ nhớ, không đưa vào file bàn giao.
+
+
+## Kết nối SQLite trong ứng dụng
+
+- File đóng gói: `database/prm_database.db`, cấu trúc SQLite tương ứng schema đã gửi (32 bảng, 5 view).
+- Dịch vụ: `lib/services/local_database.dart`. Dùng `await LocalDatabase.instance.database` để lấy kết nối, sau đó gọi `query`, `insert`, `update` hoặc `transaction`.
+- Android/iOS/macOS dùng sqflite; Windows/Linux dùng sqflite_common_ffi. Phiên bản tích hợp này chưa hỗ trợ Flutter Web.
+- Lần đầu chạy, sao chép asset sang `getApplicationSupportDirectory()/prm_database.db`. Các lần sau mở lại file này, không ghi đè dữ liệu. File trong mã nguồn là bản khởi tạo; dữ liệu người dùng nằm trong thư mục ứng dụng trên từng thiết bị.
+- DatabaseStartup mở database và đọc bảng roles trước khi vào màn hình đăng nhập. Khi lỗi mở database, giao diện cho phép thử lại.
+- Không có cấu hình host, port, user hay password MySQL; không cần chạy dịch vụ MySQL hoặc import SQL vào MySQL.
+- File khởi tạo đã có 3 tài khoản và hồ sơ mẫu. Đăng nhập xác minh bcrypt từ users và lấy vai trò từ user_roles; hồ sơ hiển thị theo tài khoản đã xác thực. Danh sách nhân viên trong ca đọc v_shift_roster. Workspace hiện tại dùng WorkforceRepository để đọc tổng quan, tài khoản, hồ sơ, phân ca và phiếu lương thật; trạng thái trống được hiển thị khi chưa có bản ghi. Tạo tài khoản và thêm nhân viên ghi SQLite. Chưa có giao diện tạo/phân ca, chấm công, tính/duyệt lương.
+- Sửa schema/seed không tự cập nhật database đã cài. Khi cần thay đổi cấu trúc cho dữ liệu đang dùng, phải bổ sung migration; không xóa file dữ liệu thật để cập nhật.
+- Windows: bật Developer Mode nếu Flutter báo `Building with plugins requires symlink support`, rồi chạy `flutter pub get` và `flutter run -d windows`.
+- Kiểm tra: `flutter analyze` và `flutter test`. Bài kiểm thử database mở asset thật, kiểm tra 32 bảng/5 view, danh mục, tính toàn vẹn, khóa ngoại và dữ liệu còn sau khi đóng/mở lại.
+
+
+## Tài khoản mẫu đã lưu trong SQLite
+
+| Tên đăng nhập | Mật khẩu mẫu | Vai trò |
+| --- | --- | --- |
+| admin | Admin@12345 | Admin |
+| manager | Manager@12345 | Quản lý |
+| employee | Employee@12345 | Nhân viên |
+
+Mỗi tài khoản có hồ sơ nhân viên và liên kết chi nhánh MOC_DEMO. Mật khẩu trong users.password_hash là bcrypt; không nhập mật khẩu dạng chữ vào cột này. Đây là tài khoản mẫu để phát triển, cần thay mật khẩu trước khi dùng dữ liệu thật.
+
+Dữ liệu mẫu được cài bằng services/sample_data.dart (PRAGMA user_version = 2). File .db trong dự án đã được cập nhật. Với database cũ đã sao chép trên thiết bị, khởi động lại ứng dụng sẽ bổ sung các tài khoản mẫu còn thiếu đúng một lần; không ghi đè tài khoản, mật khẩu hoặc vai trò đang tồn tại. Nếu tên admin/manager/employee đã tồn tại, tài khoản đó giữ nguyên thông tin cũ, nên mật khẩu trong bảng trên có thể không áp dụng.
+
+Xác thực chỉ thành công nếu tài khoản tồn tại, is_active = 1, mật khẩu bcrypt khớp và được cấp vai trò hợp lệ. Không cho tự chọn vai trò trên UI. Với database trống hoàn toàn, có thể thiết lập quản trị viên đầu tiên ngay trên màn hình đăng nhập; sau khi có tài khoản thì không được dùng lại bước này.
+
+Kiểm thử auth dùng bản sao SQLite trong thư mục tạm, có insert/query/update users và user_roles thật; không dùng kết quả đăng nhập giả. Các kiểm thử bao gồm tài khoản không tồn tại, SQL injection, sai mật khẩu, tài khoản khóa, thiếu vai trò, thay đổi vai trò, lỗi kết nối, cài dữ liệu mẫu và không ghi đè khi mở lại.
+

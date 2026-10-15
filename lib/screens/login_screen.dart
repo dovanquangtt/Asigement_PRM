@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
+import '../services/auth_service.dart';
+import '../services/workforce_repository.dart';
 import 'workspace_screen.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.auth});
+  final AuthService? auth;
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
@@ -15,7 +18,29 @@ class _LoginPageState extends State<LoginPage> {
   final username = TextEditingController();
   final password = TextEditingController();
   bool hidden = true;
-  String role = 'Nhân viên';
+  late final AuthService auth = widget.auth ?? AuthService();
+  bool busy = false;
+  bool canSetup = false;
+  bool setup = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    checkSetup();
+  }
+
+  Future<void> checkSetup() async {
+    try {
+      final exists = await auth.hasUsers();
+      if (mounted) setState(() => canSetup = !exists);
+    } catch (_) {
+      if (mounted) {
+        setState(() => error = 'Không đọc được database. Hãy thử lại.');
+      }
+    }
+  }
+
   @override
   void dispose() {
     username.dispose();
@@ -23,12 +48,39 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void enter() {
-    if (form.currentState!.validate()) {
+  Future<void> enter() async {
+    if (busy || !form.currentState!.validate()) return;
+    final name = username.text.trim();
+    final secret = password.text;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      if (setup) await auth.createFirstAdmin(name, secret);
+      final session = await auth.signIn(name, secret);
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute<void>(builder: (_) => Workspace(role: role)),
+        MaterialPageRoute<void>(
+          builder: (_) => Workspace(
+            session: session,
+            auth: auth,
+            repository: WorkforceRepository(
+              session,
+              openDatabase: () => auth.database,
+            ),
+          ),
+        ),
       );
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => error = 'Không thể kết nối database. Vui lòng thử lại.');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
 
@@ -171,6 +223,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 24),
                   TextFormField(
+                    enabled: !busy,
                     controller: username,
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
@@ -183,6 +236,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 14),
                   TextFormField(
+                    enabled: !busy,
                     controller: password,
                     obscureText: hidden,
                     onFieldSubmitted: (_) => enter(),
@@ -202,28 +256,49 @@ class _LoginPageState extends State<LoginPage> {
                         v == null || v.isEmpty ? 'Nhập mật khẩu' : null,
                   ),
                   const SizedBox(height: 18),
-                  DropdownButtonFormField<String>(
-                    initialValue: role,
-                    decoration: const InputDecoration(
-                      labelText: 'Vai trò trải nghiệm',
+                  if (canSetup) ...[
+                    const Text(
+                      'Database chưa có tài khoản. Hãy tạo quản trị viên đầu tiên với mật khẩu ít nhất 8 ký tự.',
                     ),
-                    items: ['Nhân viên', 'Quản lý', 'Admin']
-                        .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                        .toList(),
-                    onChanged: (v) => setState(() => role = v!),
-                  ),
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () => setState(() {
+                              setup = !setup;
+                              error = null;
+                            }),
+                      child: Text(
+                        setup
+                            ? 'Quay lại đăng nhập'
+                            : 'Thiết lập quản trị viên đầu tiên',
+                      ),
+                    ),
+                  ],
+                  if (error != null)
+                    Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                   const SizedBox(height: 22),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: enter,
-                      child: const Text('Vào không gian làm việc →'),
+                      onPressed: busy ? null : enter,
+                      child: Text(
+                        busy
+                            ? 'Đang kiểm tra…'
+                            : setup
+                            ? 'Tạo quản trị viên và đăng nhập'
+                            : 'Vào không gian làm việc →',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   const Center(
                     child: Text(
-                      'Bản trải nghiệm • nhập tài khoản bất kỳ',
+                      'Đăng nhập bằng tài khoản đã được cấp.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12, color: Colors.black54),
                     ),

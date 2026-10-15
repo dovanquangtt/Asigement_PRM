@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 
+import '../services/auth_service.dart';
+
 /// Dữ liệu mẫu dùng chung trong một phiên đăng nhập.
 class WorkspaceController extends ChangeNotifier {
-  WorkspaceController({required this.role});
-  final String role;
+  WorkspaceController({required this.session});
+  final UserSession session;
+  String get role => session.role;
   int tab = 0;
   int selectedDay = 2;
   int month = 10;

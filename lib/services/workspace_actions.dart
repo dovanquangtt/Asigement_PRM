@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../state/workspace_controller.dart';
 import '../widgets/common_widgets.dart';
+import 'local_database.dart';
 
-/// Điều hướng và hộp thoại; không truy cập MySQL trong bản mẫu.
+/// Điều hướng, hộp thoại và đọc dữ liệu SQLite cục bộ.
 class WorkspaceActions {
   WorkspaceActions(this.context, this.controller);
   final BuildContext context;
@@ -36,8 +37,9 @@ class WorkspaceActions {
           ),
           FilledButton(
             onPressed: () {
-              if (note.text.trim().isNotEmpty)
+              if (note.text.trim().isNotEmpty) {
                 Navigator.pop(ctx, note.text.trim());
+              }
             },
             child: const Text('Gửi yêu cầu'),
           ),
@@ -124,12 +126,29 @@ class WorkspaceActions {
       ),
     ),
   );
-  void roster() => detail('Nhân viên trong ca', [
-    ('Nguyễn Linh', 'NV001 • Phục vụ'),
-    ('Trần Minh', 'NV002 • Phục vụ'),
-    ('Lê An', 'NV003 • Thu ngân'),
-    ('Phạm Huy', 'NV004 • Bếp'),
-  ]);
+  Future<void> roster() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      final rows = await db.query('v_shift_roster', orderBy: 'starts_at DESC');
+      if (!context.mounted) return;
+      detail(
+        'Nhân viên trong ca',
+        rows.isEmpty
+            ? [('Chưa có phân ca', 'Database cục bộ chưa có dữ liệu phân ca.')]
+            : rows
+                  .map(
+                    (row) => (
+                      row['full_name'].toString(),
+                      '${row['employee_code']} • ${row['starts_at']}',
+                    ),
+                  )
+                  .toList(),
+      );
+    } catch (_) {
+      if (context.mounted) toast('Không đọc được danh sách phân ca.');
+    }
+  }
+
   void requestList() => detail(
     'Yêu cầu đã gửi',
     controller.requests.isEmpty

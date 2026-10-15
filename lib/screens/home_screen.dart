@@ -54,9 +54,9 @@ class HomeScreen extends StatelessWidget {
       ],
     ),
     const SizedBox(height: 28),
-    const Text(
-      'Chào Linh',
-      style: TextStyle(
+    Text(
+      'Chào ${controller.session.displayName}',
+      style: const TextStyle(
         fontSize: 30,
         fontWeight: FontWeight.w800,
         letterSpacing: -1,
@@ -247,9 +247,7 @@ class HomeScreen extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(
-                      'Vào ca lúc ' +
-                          actions.clock(controller.enteredAt!) +
-                          ' • dữ liệu mẫu',
+                      'Vào ca lúc ${actions.clock(controller.enteredAt!)} • dữ liệu mẫu',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 11,
@@ -348,7 +346,7 @@ class HomeScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.groups_outlined, color: green),
               title: const Text('Nhân viên trong ca'),
-              subtitle: const Text('4 nhân viên • ca sáng'),
+              subtitle: const Text('Xem dữ liệu phân ca trong database'),
               trailing: const Icon(Icons.chevron_right),
               onTap: actions.roster,
             ),

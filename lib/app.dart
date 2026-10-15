@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'theme/app_theme.dart';
-import 'screens/login_screen.dart';
+import 'screens/database_startup.dart';
 
 class PrmApp extends StatelessWidget {
   const PrmApp({super.key});
@@ -10,6 +10,6 @@ class PrmApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     title: 'Mộc • Nhân sự',
     theme: buildAppTheme(),
-    home: const LoginPage(),
+    home: const DatabaseStartup(),
   );
 }

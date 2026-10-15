@@ -33,9 +33,9 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Nguyễn Linh',
-            style: TextStyle(
+          Text(
+            controller.session.displayName,
+            style: const TextStyle(
               fontSize: 23,
               color: ink,
               fontWeight: FontWeight.w800,
@@ -43,11 +43,14 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'NV001 • ${controller.role}',
+            '${controller.session.profile['employee_code'] ?? controller.session.username} • ${controller.role}',
             style: const TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 14),
-          pill('Đang làm việc'),
+          pill(
+            controller.session.profile['status']?.toString() ??
+                'Chưa liên kết hồ sơ nhân viên',
+          ),
         ],
       ),
     ),
@@ -61,12 +64,31 @@ class ProfileScreen extends StatelessWidget {
             title: const Text('Hồ sơ nhân viên'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => actions.detail('Hồ sơ nhân viên', [
-              ('Họ tên', 'Nguyễn Linh'),
-              ('Mã nhân viên', 'NV001'),
-              ('Bộ phận', 'Phục vụ'),
-              ('Chi nhánh', 'Trung tâm'),
-              ('Ngày vào làm', '01/06/2026'),
-              ('Email', 'linh@example.com'),
+              ('Họ tên', controller.session.displayName),
+              (
+                'Mã nhân viên',
+                controller.session.profile['employee_code']?.toString() ??
+                    'Chưa liên kết',
+              ),
+              (
+                'Bộ phận',
+                controller.session.profile['department_name']?.toString() ??
+                    'Chưa có',
+              ),
+              (
+                'Chi nhánh',
+                controller.session.profile['branch_name']?.toString() ??
+                    'Chưa có',
+              ),
+              (
+                'Ngày vào làm',
+                controller.session.profile['hire_date']?.toString() ??
+                    'Chưa có',
+              ),
+              (
+                'Email',
+                controller.session.profile['email']?.toString() ?? 'Chưa có',
+              ),
             ]),
           ),
           const Divider(height: 1),

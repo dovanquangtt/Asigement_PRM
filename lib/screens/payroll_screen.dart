@@ -115,7 +115,7 @@ class PayrollScreen extends StatelessWidget {
         ('Hợp đồng', 'HĐ001 • Toàn thời gian'),
         ('Kỳ lương', 'Tháng ${controller.month}/2026'),
         ('Trạng thái', controller.month == 10 ? 'Tạm tính' : 'Đã thanh toán'),
-        ('Dữ liệu', 'Phiếu mẫu, chưa lấy từ MySQL'),
+        ('Dữ liệu', 'Phiếu mẫu, chưa lấy từ SQLite'),
       ]),
       icon: const Icon(Icons.receipt_long_outlined),
       label: const Text('Mở phiếu lương'),
