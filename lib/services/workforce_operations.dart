@@ -175,15 +175,128 @@ extension WorkforceOperations on WorkforceRepository {
       }
     }
     final rows = await db.rawQuery(
-      'SELECT s.*,b.name AS branch_name FROM shifts s JOIN branches b ON b.id=s.branch_id WHERE s.id=?',
+      'SELECT s.*, b.name AS branch_name, b.latitude, b.longitude, b.geofence_radius_m FROM shifts s JOIN branches b ON b.id=s.branch_id WHERE s.id=?',
       [shiftId],
     );
     if (rows.isEmpty) throw const AuthException('Không tìm thấy ca.');
     final roster = await db.rawQuery(
-      "SELECT a.id,a.status,e.employee_code,e.full_name,e.user_id FROM shift_assignments a JOIN employees e ON e.id=a.employee_id WHERE a.shift_id=? AND a.status<>'cancelled'",
+      "SELECT a.id, a.status, e.employee_code, e.full_name, e.user_id, "
+      "(SELECT event_type FROM attendance_events WHERE assignment_id=a.id AND result='accepted' ORDER BY occurred_at DESC LIMIT 1) AS last_event, "
+      "(SELECT status FROM shift_closures WHERE assignment_id=a.id ORDER BY id DESC LIMIT 1) AS closure_status "
+      "FROM shift_assignments a JOIN employees e ON e.id=a.employee_id WHERE a.shift_id=? AND a.status<>'cancelled'",
       [shiftId],
     );
     return {...rows.single, 'roster': roster};
+  }
+
+  /// Lấy danh sách lịch ca chi tiết của nhân viên hiện tại (hoặc nhân viên chỉ định nếu có quyền quản lý)
+  Future<List<RowData>> employeeSchedule({int? employeeId}) async {
+    final db = await _open();
+    final managing = await _can(db, 'shifts.manage');
+    int targetEmpId;
+    if (employeeId != null && managing) {
+      targetEmpId = employeeId;
+    } else {
+      await _require(db, 'schedule.self');
+      final me = await _me(db);
+      targetEmpId = me['id'] as int;
+    }
+
+    return db.rawQuery(
+      '''
+      SELECT
+        a.id AS assignment_id,
+        s.id AS shift_id,
+        s.branch_id,
+        s.starts_at,
+        s.ends_at,
+        s.status AS shift_status,
+        s.required_staff,
+        s.note AS shift_note,
+        b.name AS branch_name,
+        a.status AS assignment_status,
+        (SELECT GROUP_CONCAT(e2.full_name, ', ')
+         FROM shift_assignments a2
+         JOIN employees e2 ON e2.id=a2.employee_id
+         WHERE a2.shift_id=s.id AND a2.employee_id <> a.employee_id AND a2.status<>'cancelled') AS coworkers,
+        (SELECT COUNT(*)
+         FROM shift_assignments a3
+         WHERE a3.shift_id=s.id AND a3.status<>'cancelled') AS total_assigned,
+        (SELECT event_type
+         FROM attendance_events
+         WHERE assignment_id=a.id AND result='accepted'
+         ORDER BY occurred_at DESC LIMIT 1) AS last_attendance_event,
+        (SELECT status
+         FROM shift_closures
+         WHERE assignment_id=a.id
+         ORDER BY id DESC LIMIT 1) AS closure_status
+      FROM shift_assignments a
+      JOIN shifts s ON s.id=a.shift_id
+      JOIN branches b ON b.id=s.branch_id
+      WHERE a.employee_id=? AND a.status<>'cancelled'
+      ORDER BY s.starts_at DESC
+      ''',
+      [targetEmpId],
+    );
+  }
+
+  /// Danh sách loại nghỉ phép có trong hệ thống
+  Future<List<RowData>> leaveTypes() async {
+    final db = await _open();
+    await _require(db, 'schedule.self');
+    return db.query('leave_types', orderBy: 'name');
+  }
+
+  /// Yêu cầu nghỉ phép của nhân viên hiện tại
+  Future<List<RowData>> employeeLeaveRequests() async {
+    final db = await _open();
+    await _require(db, 'schedule.self');
+    final me = await _me(db);
+    return db.rawQuery(
+      '''
+      SELECT l.*, t.name AS leave_type_name
+      FROM leave_requests l
+      JOIN leave_types t ON t.id=l.leave_type_id
+      WHERE l.employee_id=?
+      ORDER BY l.starts_at DESC
+      ''',
+      [me['id']],
+    );
+  }
+
+  /// Tạo yêu cầu nghỉ phép mới
+  Future<void> createLeaveRequest({
+    required int leaveTypeId,
+    required DateTime start,
+    required DateTime end,
+    required String reason,
+  }) async {
+    if (!end.isAfter(start)) {
+      throw const AuthException(
+        'Thời gian kết thúc phải sau thời gian bắt đầu.',
+      );
+    }
+    if (reason.trim().isEmpty) {
+      throw const AuthException('Vui lòng nhập lý do nghỉ phép.');
+    }
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'schedule.self');
+      final me = await _me(tx);
+      final minutes = end.difference(start).inMinutes;
+      if (minutes <= 0) {
+        throw const AuthException('Thời gian nghỉ không hợp lệ.');
+      }
+      await tx.insert('leave_requests', {
+        'employee_id': me['id'],
+        'leave_type_id': leaveTypeId,
+        'starts_at': sqlTime(start),
+        'ends_at': sqlTime(end),
+        'requested_minutes': minutes,
+        'reason': reason.trim(),
+        'status': 'pending',
+      });
+    });
   }
 
   Future<RowData> attendanceContext(int assignmentId) async {

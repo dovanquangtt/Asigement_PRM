@@ -168,7 +168,7 @@ class WorkforceRepository {
     final managing = await _can(db, 'payroll.manage');
     if (!managing) await _require(db, 'payslips.self');
     return db.rawQuery(
-      'SELECT p.*,e.full_name,pp.code AS period_code FROM v_payslip_totals p '
+      'SELECT p.*,e.full_name,pp.code AS period_code,pp.starts_on,pp.ends_on FROM v_payslip_totals p '
       'JOIN employees e ON e.id=p.employee_id JOIN payroll_periods pp ON pp.id=p.period_id '
       '${managing ? '' : 'WHERE e.user_id=? '}ORDER BY pp.starts_on DESC,e.full_name',
       managing ? [] : [session.userId],

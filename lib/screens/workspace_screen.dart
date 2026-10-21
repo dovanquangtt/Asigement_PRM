@@ -7,6 +7,8 @@ import '../widgets/common_widgets.dart';
 import 'login_screen.dart';
 import 'operations_screen.dart';
 import 'notifications_screen.dart';
+import 'payroll_screen.dart';
+import 'schedule_screen.dart';
 
 class Workspace extends StatefulWidget {
   const Workspace({
@@ -475,47 +477,67 @@ class _WorkspaceState extends State<Workspace> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 650),
-          child: FutureBuilder<Object>(
-            future: loading,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          snapshot.error is AuthException
-                              ? (snapshot.error as AuthException).message
-                              : 'Không đọc được dữ liệu. Hãy thử lại.',
+          child: current == 'shifts'
+              ? ScheduleScreen(repository: repository)
+              : FutureBuilder<Object>(
+                  future: loading,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                snapshot.error is AuthException
+                                    ? (snapshot.error as AuthException).message
+                                    : 'Không đọc được dữ liệu. Hãy thử lại.',
+                              ),
+                              TextButton(
+                                onPressed: refresh,
+                                child: const Text('Thử lại'),
+                              ),
+                              TextButton(
+                                onPressed: signingOut ? null : logout,
+                                child: const Text('Về đăng nhập'),
+                              ),
+                            ],
+                          ),
                         ),
-                        TextButton(
-                          onPressed: refresh,
-                          child: const Text('Thử lại'),
-                        ),
-                        TextButton(
-                          onPressed: signingOut ? null : logout,
-                          child: const Text('Về đăng nhập'),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return RefreshIndicator(
-                onRefresh: refresh,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(20),
-                  children: content(snapshot.data!),
+                      );
+                    }
+                    if (current == 'payroll' &&
+                        widget.session.role == 'Nhân viên') {
+                      return EmployeePayrollScreen(
+                        payslips: snapshot.data! as List<RowData>,
+                        onRefresh: refresh,
+                        onOpen: (row) {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => PayDetailPage(
+                                repository: repository,
+                                id: row['id'] as int,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+                    return RefreshIndicator(
+                      onRefresh: refresh,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(20),
+                        children: content(snapshot.data!),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         ),
       ),
     ),

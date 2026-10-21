@@ -245,11 +245,10 @@ void main() {
   test(
     'Seeded swap ready for Admin approval works; other roles cannot import',
     () async {
-      final f = await DatabaseFixture.open(
-        keepSampleUsers: true,
-        bundledData: true,
-      );
+      final f = await DatabaseFixture.open(keepSampleUsers: true);
       try {
+        // Seed future shifts now; the bundled snapshot eventually expires.
+        await installFeatureSamples(f.db);
         final admin = await repo(f, 'admin', 'Admin@12345');
         final manager = await repo(f, 'manager', 'Manager@12345');
         final employee = await repo(f, 'employee', 'Employee@12345');
