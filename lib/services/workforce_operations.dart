@@ -175,12 +175,15 @@ extension WorkforceOperations on WorkforceRepository {
       }
     }
     final rows = await db.rawQuery(
-      'SELECT s.*,b.name AS branch_name FROM shifts s JOIN branches b ON b.id=s.branch_id WHERE s.id=?',
+      'SELECT s.*, b.name AS branch_name, b.latitude, b.longitude, b.geofence_radius_m FROM shifts s JOIN branches b ON b.id=s.branch_id WHERE s.id=?',
       [shiftId],
     );
     if (rows.isEmpty) throw const AuthException('Không tìm thấy ca.');
     final roster = await db.rawQuery(
-      "SELECT a.id,a.status,e.employee_code,e.full_name,e.user_id FROM shift_assignments a JOIN employees e ON e.id=a.employee_id WHERE a.shift_id=? AND a.status<>'cancelled'",
+      "SELECT a.id, a.status, e.employee_code, e.full_name, e.user_id, "
+      "(SELECT event_type FROM attendance_events WHERE assignment_id=a.id AND result='accepted' ORDER BY occurred_at DESC LIMIT 1) AS last_event, "
+      "(SELECT status FROM shift_closures WHERE assignment_id=a.id ORDER BY id DESC LIMIT 1) AS closure_status "
+      "FROM shift_assignments a JOIN employees e ON e.id=a.employee_id WHERE a.shift_id=? AND a.status<>'cancelled'",
       [shiftId],
     );
     return {...rows.single, 'roster': roster};
