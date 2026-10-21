@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import 'login_screen.dart';
 import 'operations_screen.dart';
+import 'payroll_screen.dart';
 import 'schedule_screen.dart';
 
 class Workspace extends StatefulWidget {
@@ -495,6 +496,24 @@ class _WorkspaceState extends State<Workspace> {
                             ],
                           ),
                         ),
+                      );
+                    }
+                    if (current == 'payroll' &&
+                        widget.session.role == 'Nhân viên') {
+                      return EmployeePayrollScreen(
+                        payslips: snapshot.data! as List<RowData>,
+                        onRefresh: refresh,
+                        onOpen: (row) {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => PayDetailPage(
+                                repository: repository,
+                                id: row['id'] as int,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     }
                     return RefreshIndicator(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quanlinhansunhahang/screens/login_screen.dart';
+import 'package:quanlinhansunhahang/screens/payroll_screen.dart';
 import 'package:quanlinhansunhahang/screens/workspace_screen.dart';
+import 'package:quanlinhansunhahang/services/workforce_repository.dart';
 
 import 'database_fixture.dart';
 
@@ -63,5 +65,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Chào linh'), findsOneWidget);
+  });
+
+  testWidgets('Employee payroll filters real slips and opens a selected slip', (
+    tester,
+  ) async {
+    int? openedId;
+    final slips = <RowData>[
+      {
+        'id': 1,
+        'period_code': 'OCT_DRAFT',
+        'starts_on': '2026-10-01',
+        'ends_on': '2026-10-31',
+        'status': 'draft',
+        'net_pay_vnd': 10600000,
+        'gross_pay_vnd': 10700000,
+        'deductions_vnd': 100000,
+      },
+      {
+        'id': 2,
+        'period_code': 'SEP_PAID',
+        'starts_on': '2026-09-01',
+        'ends_on': '2026-09-30',
+        'status': 'paid',
+        'net_pay_vnd': 10200000,
+        'gross_pay_vnd': 10300000,
+        'deductions_vnd': 100000,
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EmployeePayrollScreen(
+            payslips: slips,
+            onRefresh: () async {},
+            onOpen: (row) => openedId = row['id'] as int,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Bảng lương của tôi'), findsOneWidget);
+    expect(find.text('Phiếu #1'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Đã thanh toán'));
+    await tester.pumpAndSettle();
+    expect(find.text('Phiếu #1'), findsNothing);
+    await tester.dragUntilVisible(
+      find.text('Phiếu #2'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    await tester.ensureVisible(find.text('Phiếu #2'));
+    await tester.pumpAndSettle();
+    expect(find.text('Phiếu #2'), findsOneWidget);
+
+    await tester.tap(find.text('Phiếu #2'));
+    expect(openedId, 2);
   });
 }
