@@ -84,6 +84,42 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> enterGoogle() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final session = await auth.signInGoogle();
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => Workspace(
+            session: session,
+            auth: auth,
+            repository: WorkforceRepository(
+              session,
+              openDatabase: () => auth.database,
+            ),
+          ),
+        ),
+      );
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => error =
+              'Không hoàn tất đăng nhập Gmail. Kiểm tra Internet hoặc thử lại.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
@@ -296,6 +332,14 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: busy ? null : enterGoogle,
+                      icon: const Icon(Icons.account_circle_outlined),
+                      label: const Text('Đăng nhập bằng Gmail'),
+                    ),
+                  ),
                   const Center(
                     child: Text(
                       'Đăng nhập bằng tài khoản đã được cấp.',

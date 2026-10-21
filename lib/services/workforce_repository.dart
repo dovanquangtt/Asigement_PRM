@@ -2,6 +2,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'auth_service.dart';
 import 'local_database.dart';
+import 'attendance_evidence.dart';
+
+import 'dart:math' as math;
+import 'dart:convert';
+import 'dart:io';
+
+import 'payroll_source.dart';
+import 'feature_sample_data.dart';
+
+part 'workforce_operations.dart';
 
 typedef RowData = Map<String, Object?>;
 
@@ -10,6 +20,99 @@ class WorkforceRepository {
     : _open = openDatabase ?? (() => LocalDatabase.instance.database);
   final UserSession session;
   final Future<Database> Function() _open;
+
+  /// Ghi thông báo cùng transaction nghiệp vụ: thành công hoặc rollback cùng nhau.
+  Future<void> _notify(
+    DatabaseExecutor tx,
+    Iterable<int> users,
+    String title,
+    String body,
+    String entity,
+    int entityId,
+  ) async {
+    final recipients = users.toSet()..remove(session.userId);
+    if (recipients.isEmpty) return;
+    final id = await tx.insert('notifications', {
+      'title': title,
+      'body': body,
+      'notification_type': 'workflow',
+      'created_by': session.userId,
+      'related_entity': entity,
+      'related_id': entityId,
+    });
+    for (final user in recipients) {
+      await tx.insert('notification_recipients', {
+        'notification_id': id,
+        'user_id': user,
+      });
+    }
+  }
+
+  Future<List<int>> _employeeUsers(
+    DatabaseExecutor tx,
+    Iterable<int> employees,
+  ) async {
+    final result = <int>[];
+    for (final id in employees.toSet()) {
+      final rows = await tx.query(
+        'employees',
+        columns: ['user_id'],
+        where: 'id=?',
+        whereArgs: [id],
+      );
+      if (rows.isNotEmpty && rows.single['user_id'] != null) {
+        result.add(rows.single['user_id'] as int);
+      }
+    }
+    return result;
+  }
+
+  Future<List<RowData>> notifications() async {
+    final db = await _open();
+    await _require(db, 'profile.self');
+    return db.rawQuery(
+      'SELECT n.*,r.read_at FROM notifications n JOIN notification_recipients r ON r.notification_id=n.id WHERE r.user_id=? ORDER BY n.id DESC',
+      [session.userId],
+    );
+  }
+
+  Future<List<int>> _reviewers(
+    DatabaseExecutor tx,
+    String permission, {
+    Iterable<int> excluding = const [],
+  }) async {
+    final rows = await tx.rawQuery(
+      'SELECT DISTINCT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN role_permissions rp ON rp.role_id=ur.role_id JOIN permissions p ON p.id=rp.permission_id WHERE u.is_active=1 AND p.code=?',
+      [permission],
+    );
+    return rows
+        .map((r) => r['id'] as int)
+        .where((id) => !excluding.contains(id))
+        .toList();
+  }
+
+  Future<void> markNotificationRead(int id) async {
+    final db = await _open();
+    await _require(db, 'profile.self');
+    await db.update(
+      'notification_recipients',
+      {'read_at': DateTime.now().toUtc().toIso8601String()},
+      where: 'notification_id=? AND user_id=? AND read_at IS NULL',
+      whereArgs: [id, session.userId],
+    );
+  }
+
+  /// Chỉ Admin được chủ động nạp mẫu vào bản database đã tồn tại trên thiết bị.
+  /// Seeder có marker riêng nên không xóa, ghi đè hoặc nhân đôi dữ liệu.
+  Future<bool> installDemoData() async {
+    final db = await _open();
+    await _require(db, 'users.manage');
+    try {
+      return await installFeatureSamples(db);
+    } on SampleDataException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
 
   Future<bool> _can(DatabaseExecutor db, String permission) async =>
       (await db.rawQuery(
@@ -161,7 +264,7 @@ class WorkforceRepository {
       )).isNotEmpty) {
         throw const AuthException('Mã nhân viên đã tồn tại.');
       }
-      final now = DateTime.now();
+      final now = DateTime.now().toUtc().add(const Duration(hours: 7));
       await tx.insert('employees', {
         'employee_code': code.trim(),
         'full_name': name.trim(),

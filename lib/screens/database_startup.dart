@@ -38,7 +38,9 @@ class _DatabaseStartupState extends State<DatabaseStartup> {
                 const Text('Không mở được database cục bộ.'),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () => setState(() => opening = initialize()),
+                  onPressed: () => setState(() {
+                    opening = initialize();
+                  }),
                   child: const Text('Thử lại'),
                 ),
               ],

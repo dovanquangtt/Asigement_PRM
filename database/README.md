@@ -4,7 +4,7 @@ Nguồn: File_Chuc_Nang_PRM_Hoan_Chinh.xlsx, Sheet1 (20 dòng chức năng M01�
 
 ## File và cách dùng
 
-- prm_database.db: SQLite đã tạo sẵn, gồm 32 bảng, 5 view và dữ liệu danh mục. Có thể mở bằng công cụ đọc SQLite hoặc sao chép vào thư mục database của ứng dụng Flutter.
+- prm_database.db: SQLite đã tạo sẵn, gồm 34 bảng (32 bảng gốc + 2 bảng bổ sung), 5 view và dữ liệu danh mục. Có thể mở bằng công cụ đọc SQLite hoặc sao chép vào thư mục database của ứng dụng Flutter.
 - prm_schema.sql: tạo cấu trúc trên database trống; chạy trước prm_seed.sql. Không chạy lại trên database đã khởi tạo.
 - prm_seed.sql: vai trò, quyền, bộ phận, chức vụ, loại nghỉ. Sau khi tạo database từ hai file SQL, chạy dart run tool/seed_database.dart để thêm tài khoản và hồ sơ mẫu vào database/prm_database.db. Các danh mục là giả định ban đầu có thể chỉnh sửa.
 
@@ -59,7 +59,7 @@ Khởi tạo schema và seed thành công trên SQLite. integrity_check trả ok
 - Lần đầu chạy, sao chép asset sang `getApplicationSupportDirectory()/prm_database.db`. Các lần sau mở lại file này, không ghi đè dữ liệu. File trong mã nguồn là bản khởi tạo; dữ liệu người dùng nằm trong thư mục ứng dụng trên từng thiết bị.
 - DatabaseStartup mở database và đọc bảng roles trước khi vào màn hình đăng nhập. Khi lỗi mở database, giao diện cho phép thử lại.
 - Không có cấu hình host, port, user hay password MySQL; không cần chạy dịch vụ MySQL hoặc import SQL vào MySQL.
-- File khởi tạo đã có 3 tài khoản và hồ sơ mẫu. Đăng nhập xác minh bcrypt từ users và lấy vai trò từ user_roles; hồ sơ hiển thị theo tài khoản đã xác thực. Danh sách nhân viên trong ca đọc v_shift_roster. Workspace hiện tại dùng WorkforceRepository để đọc tổng quan, tài khoản, hồ sơ, phân ca và phiếu lương thật; trạng thái trống được hiển thị khi chưa có bản ghi. Tạo tài khoản và thêm nhân viên ghi SQLite. Chưa có giao diện tạo/phân ca, chấm công, tính/duyệt lương.
+- File khởi tạo đã có 3 tài khoản và hồ sơ mẫu. Đăng nhập xác minh bcrypt từ users và lấy vai trò từ user_roles; hồ sơ hiển thị theo tài khoản đã xác thực. Danh sách nhân viên trong ca đọc v_shift_roster. Workspace hiện tại dùng WorkforceRepository để đọc tổng quan, tài khoản, hồ sơ, phân ca và phiếu lương thật; trạng thái trống được hiển thị khi chưa có bản ghi. Tạo tài khoản và thêm nhân viên ghi SQLite. Đã có giao diện và dịch vụ M01–M07 trong operations_screen.dart/workforce_operations.dart. Xem FEATURES.md ở gốc project để cấu hình thiết bị/GPS/Wi-Fi, hợp đồng, kỳ lương và Google OAuth.
 - Sửa schema/seed không tự cập nhật database đã cài. Khi cần thay đổi cấu trúc cho dữ liệu đang dùng, phải bổ sung migration; không xóa file dữ liệu thật để cập nhật.
 - Windows: bật Developer Mode nếu Flutter báo `Building with plugins requires symlink support`, rồi chạy `flutter pub get` và `flutter run -d windows`.
 - Kiểm tra: `flutter analyze` và `flutter test`. Bài kiểm thử database mở asset thật, kiểm tra 32 bảng/5 view, danh mục, tính toàn vẹn, khóa ngoại và dữ liệu còn sau khi đóng/mở lại.
@@ -81,3 +81,20 @@ Xác thực chỉ thành công nếu tài khoản tồn tại, is_active = 1, m�
 
 Kiểm thử auth dùng bản sao SQLite trong thư mục tạm, có insert/query/update users và user_roles thật; không dùng kết quả đăng nhập giả. Các kiểm thử bao gồm tài khoản không tồn tại, SQL injection, sai mật khẩu, tài khoản khóa, thiếu vai trò, thay đổi vai trò, lỗi kết nối, cài dữ liệu mẫu và không ghi đè khi mở lại.
 
+
+
+## Migration chức năng M01–M07
+
+Database mẫu hiện có user_version=4. LocalDatabase tự gọi migrateFeatures khi mở database trên thiết bị. Các migration chỉ thêm cột/bảng/index, không xóa tài khoản hay dữ liệu nghiệp vụ.
+
+- v3: employee_devices.approved_by, users.google_subject, payroll_policies và employee_payroll_checks.
+- v4: lưu hai nhân viên ban đầu của yêu cầu đổi ca; lưu hash dữ liệu nguồn tính lương để phát hiện thay đổi trước khi duyệt.
+- prm_features_v3.sql và prm_features_v4.sql là bản SQL để tham khảo hoặc nâng cấp thủ công đúng phiên bản. Không chạy lại trên database đã được ứng dụng nâng cấp.
+- Chạy `dart run tool/seed_database.dart` để cập nhật database mẫu trong project; không ghi đè file đang dùng trên điện thoại.
+- Xem FEATURES.md để biết bảng/view được sử dụng cho từng chức năng và cách kiểm thử.
+
+## Dữ liệu mẫu đầy đủ cho 3 vai trò
+
+`prm_database.db` hiện có dữ liệu tại đủ 34 bảng, 5 view. `prm_demo_seed.sql` là snapshot có thể mở đọc trực tiếp trong VS Code; không trộn snapshot này vào database đã có dữ liệu. Thứ tự và tình huống test chi tiết nằm trong [DEMO_DATA.md](DEMO_DATA.md).
+
+Có 13 ca/18 phân ca, 10 bản ghi công/22 sự kiện, 3 hợp đồng, 6 phiếu lương thuộc 2 kỳ, 3 yêu cầu đổi ca, sao, báo cáo/ảnh đóng ca, nghỉ phép, thông báo và nhật ký. App cũ có thể nạp qua nút Admin ở Trang chủ; thao tác có kiểm tra quyền, transaction và marker chống nạp lặp.

@@ -14,7 +14,7 @@ Quyền được đối chiếu lại với users, user_roles, role_permissions 
 
 ## Database nằm trong project
 
-- `database/prm_database.db`: file SQLite thật, gồm 32 bảng, 5 view, dữ liệu danh mục và 3 tài khoản/hồ sơ mẫu.
+- `database/prm_database.db`: file SQLite thật, gồm 34 bảng (32 bảng gốc + 2 bảng nghiệp vụ bổ sung), 5 view, dữ liệu danh mục và 3 tài khoản/hồ sơ mẫu.
 - `database/prm_schema.sql`: cấu trúc bảng và view.
 - `database/prm_seed.sql`: dữ liệu danh mục.
 - `lib/services/sample_data.dart`: cài tài khoản và hồ sơ mẫu một lần, không ghi đè tài khoản đã tồn tại.
@@ -25,7 +25,7 @@ Không cần MySQL, máy chủ database hoặc ứng dụng bên ngoài. Khi ch�
 
 ```powershell
 flutter pub get
-flutter run -d emulator-5554
+flutter run
 ```
 
 Dừng bản app cũ rồi chạy lại sau khi thay đổi mã kết nối hoặc plugin.
@@ -43,11 +43,23 @@ Mật khẩu được lưu bằng bcrypt trong `users.password_hash`. Các tài 
 ```powershell
 flutter analyze
 flutter test
-flutter test integration_test/authentication_test.dart -d emulator-5554
+flutter test integration_test/authentication_test.dart -d DEVICE_ID_ANDROID --no-uninstall
 ```
 
 Các kiểm thử dùng SQLite thật, kiểm tra đăng nhập sai/đúng, vai trò, giới hạn dữ liệu cá nhân và lưu dữ liệu. Kiểm thử integration chạy trực tiếp trên Android.
 
 ## Phạm vi hiện tại
 
-Lịch ca và phiếu lương hiển thị các bản ghi có trong database; khi chưa có dữ liệu, app hiển thị trạng thái trống. Chức năng tạo/phân ca, chấm công thực tế, tính/duyệt lương và duyệt nghỉ phép chưa có trong giao diện hiện tại. Hồ sơ thêm mới được gán chi nhánh đầu tiên, chưa có màn hình liên kết hồ sơ với tài khoản. SQLite lưu riêng trên từng thiết bị và chưa đồng bộ giữa nhiều điện thoại.
+Đã triển khai giao diện và nghiệp vụ M01–M07: thiết bị/GPS/Wi-Fi/điểm danh, lịch/phân ca, tính và duyệt lương 6 bước, đổi ca, sao, ảnh và đóng ca. Có liên kết hồ sơ mới với tài khoản. Đăng nhập Gmail cần Google OAuth Client ID/SHA-1 của chủ dự án; chưa có cấu hình Google thật trong repository. SQLite lưu riêng trên từng thiết bị, chưa đồng bộ giữa điện thoại. Xem [FEATURES.md](FEATURES.md) để biết cách cấu hình, thứ tự thử chức năng, công thức lương và giới hạn kiểm thử.
+
+## Cấu hình trên từng máy
+
+Project không đặt JAVA_HOME, ANDROID_HOME, PATH hay cấu hình hệ điều hành. Dùng Flutter/Android SDK đã có trên máy của bạn. `android/local.properties`, `.dart_tool`, `build` và cache là dữ liệu riêng từng máy, không đưa lên Git. Không áp dụng cấu hình cache Kotlin dành riêng cho ổ C/D của máy phát triển.
+
+Chạy `flutter devices` để lấy thiết bị Android của máy bạn; thay `DEVICE_ID_ANDROID` trong lệnh test bằng ID vừa liệt kê. `flutter run` cho phép chọn thiết bị, không cố định tên máy ảo. Google Client ID là tham số bản build `--dart-define`, không cần tạo biến môi trường toàn hệ thống.
+
+## Bộ dữ liệu thử đầy đủ
+
+File `database/prm_database.db` đã chứa dữ liệu cho đủ 34 bảng và 5 view, giữ nguyên 3 role. Xem [hướng dẫn dữ liệu mẫu](database/DEMO_DATA.md) hoặc [snapshot INSERT SQL](database/prm_demo_seed.sql).
+
+Với app đã có database cũ: chạy lại bản code mới, đăng nhập Admin → Trang chủ → Nạp dữ liệu mẫu M01–M07. Không cần xóa database hoặc nhập SQL thủ công. Các lần nạp sau giữ nguyên dữ liệu đã chỉnh.

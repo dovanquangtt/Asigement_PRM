@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'local_database.dart';
+import 'google_auth.dart';
+
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthException implements Exception {
   const AuthException(this.message);
@@ -40,8 +43,13 @@ bool _verifyPassword((String, String) input) {
 
 /// Mọi lần đăng nhập đều đọc users, user_roles và quyền từ SQLite.
 class AuthService {
-  AuthService({Future<Database> Function()? openDatabase})
-    : _openDatabase = openDatabase ?? (() => LocalDatabase.instance.database);
+  AuthService({
+    Future<Database> Function()? openDatabase,
+    GoogleAuth? googleAuth,
+  }) : _openDatabase = openDatabase ?? (() => LocalDatabase.instance.database),
+       _googleAuth = googleAuth ?? DeviceGoogleAuth();
+
+  final GoogleAuth _googleAuth;
 
   final Future<Database> Function() _openDatabase;
   static const invalidCredentials = 'Tên đăng nhập hoặc mật khẩu không đúng.';
@@ -61,6 +69,77 @@ class AuthService {
     columns: ['id'],
     limit: 1,
   )).isNotEmpty;
+
+  Future<UserSession> signInGoogle() async {
+    try {
+      final account = await _googleAuth.authenticate();
+      final db = await _openDatabase();
+      return await db.transaction((tx) async {
+        final rows = await tx.query(
+          'users',
+          where: 'LOWER(TRIM(email)) = ? AND is_active = 1',
+          whereArgs: [account.email.trim().toLowerCase()],
+        );
+        if (rows.length != 1) {
+          throw const AuthException(
+            'Gmail chưa được cấp tài khoản duy nhất đang hoạt động. Hãy liên hệ Admin.',
+          );
+        }
+        final user = rows.single;
+        if (account.id.isEmpty ||
+            (user['google_subject'] != null &&
+                user['google_subject'] != account.id)) {
+          throw const AuthException('Liên kết Google không khớp.');
+        }
+        final linked = await tx.query(
+          'users',
+          columns: ['id'],
+          where: 'google_subject = ? AND id <> ?',
+          whereArgs: [account.id, user['id']],
+        );
+        if (linked.isNotEmpty) {
+          throw const AuthException('Google đã liên kết với tài khoản khác.');
+        }
+        final session = await _sessionFor(tx, user);
+        await tx.update(
+          'users',
+          {'google_subject': account.id},
+          where: 'id = ?',
+          whereArgs: [user['id']],
+        );
+        return session;
+      });
+    } on GoogleSignInException catch (e) {
+      await signOut();
+      final message = switch (e.code.name) {
+        'canceled' => 'Đăng nhập Google đã bị hủy. Nếu lỗi xuất hiện sau khi chọn Gmail, hãy kiểm tra OAuth/SHA-1.',
+        'clientConfigurationError' || 'providerConfigurationError' => 'Cấu hình Google chưa đúng. Hãy kiểm tra Client ID, package Android và SHA-1.',
+        _ => 'Không đăng nhập được Google. Kiểm tra Internet và thử lại.',
+      };
+      throw AuthException(message);
+    } on UnsupportedError {
+      await signOut();
+      throw const AuthException(
+        'Đăng nhập Gmail hiện được cấu hình cho Android.',
+      );
+    } on StateError {
+      await signOut();
+      throw const AuthException(
+        'Chưa cấu hình Google OAuth. Cần GOOGLE_WEB_CLIENT_ID và SHA-1 của bản Android.',
+      );
+    } catch (_) {
+      await signOut();
+      rethrow;
+    }
+  }
+
+  Future<void> signOut() async {
+    try {
+      await _googleAuth.signOut();
+    } catch (_) {
+      // Navigation still removes the local session when Google cleanup fails.
+    }
+  }
 
   Future<UserSession> signIn(String username, String password) async {
     final db = await _openDatabase();
@@ -89,6 +168,13 @@ class AuthService {
         current.single['password_hash'] != user['password_hash']) {
       throw const AuthException(invalidCredentials);
     }
+    return _sessionFor(db, current.single);
+  }
+
+  Future<UserSession> _sessionFor(
+    DatabaseExecutor db,
+    Map<String, Object?> user,
+  ) async {
     final roles = await db.rawQuery(
       'SELECT r.code FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ?',
       [user['id']],

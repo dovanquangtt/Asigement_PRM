@@ -55,5 +55,35 @@ void main() {
     expect(workspace.session.userId, id);
     expect(workspace.session.role, 'Nhân viên');
     expect(find.text('Chào linh'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Cập nhật'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Chào linh'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Cá nhân').last);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Đăng xuất'));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Đăng xuất'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(find.byType(Workspace), findsNothing);
+    expect(
+      tester
+          .element(find.byType(LoginPage))
+          .findAncestorStateOfType<NavigatorState>()!
+          .canPop(),
+      isFalse,
+    );
   });
 }

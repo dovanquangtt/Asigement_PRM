@@ -5,6 +5,7 @@ import 'package:quanlinhansunhahang/app.dart';
 import 'package:quanlinhansunhahang/screens/login_screen.dart';
 
 import 'package:quanlinhansunhahang/screens/workspace_screen.dart';
+import 'package:quanlinhansunhahang/screens/operations_screen.dart';
 import 'package:quanlinhansunhahang/services/local_database.dart';
 
 void main() {
@@ -70,6 +71,29 @@ void main() {
             .shifts();
         if (savedShifts.isEmpty) {
           expect(find.text('Chưa có phân ca được lưu.'), findsOneWidget);
+        }
+        await tester.tap(find.text('Trang chủ'));
+        await tester.pumpAndSettle();
+        for (final label in [
+          'M02 • Tính lương & kiểm tra 6 bước',
+          'M05 • Đổi ca',
+          'M06 • Sao nhân viên',
+          'M07 • Ảnh & báo cáo đóng ca',
+        ]) {
+          await tester.scrollUntilVisible(
+            find.text(label),
+            200,
+            scrollable: find.descendant(
+              of: find.byType(Workspace),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          await tester.tap(find.text(label));
+          await tester.pumpAndSettle();
+          expect(find.byType(OperationsPage), findsOneWidget);
+          expect(find.text('Không tải được dữ liệu.'), findsNothing);
+          await tester.pageBack();
+          await tester.pumpAndSettle();
         }
         await tester.tap(find.text('Cá nhân'));
         await tester.pumpAndSettle();
