@@ -1,4 +1,8 @@
 -- Initial reference data only. No accounts or passwords.
+-- Du lieu day du 3 role / 34 bang: xem prm_demo_seed.sql.
+-- App doc truc tiep prm_database.db; khong can import vao MySQL.
+-- Bundled prm_database.db also includes sample accounts and migrations v3/v4.
+-- To build/update that file after schema+seed: dart run tool/seed_database.dart
 PRAGMA foreign_keys=ON;
 BEGIN;
 INSERT INTO roles(id,code,name) VALUES (1,'admin','Quản trị viên'),(2,'manager','Quản lý'),(3,'employee','Nhân viên');

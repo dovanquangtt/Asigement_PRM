@@ -55,5 +55,13 @@ void main() {
     expect(workspace.session.userId, id);
     expect(workspace.session.role, 'Nhân viên');
     expect(find.text('Chào linh'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Cập nhật'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Chào linh'), findsOneWidget);
   });
 }

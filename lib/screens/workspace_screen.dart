@@ -5,6 +5,8 @@ import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import 'login_screen.dart';
+import 'operations_screen.dart';
+import 'schedule_screen.dart';
 
 class Workspace extends StatefulWidget {
   const Workspace({
@@ -41,6 +43,141 @@ class _WorkspaceState extends State<Workspace> {
     ('Cá nhân', Icons.person_outline, 'profile'),
   ];
   String get current => destinations[tab].$3;
+  Future<void> installDemoData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Nạp dữ liệu mẫu M01–M07?'),
+        content: const Text(
+          'Bổ sung bộ tình huống DEMO vào database đang dùng. Không xóa dữ liệu, không ghi đè mật khẩu hoặc nạp lặp lại bộ mẫu đã có.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Nạp dữ liệu mẫu'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final added = await repository.installDemoData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            added
+                ? 'Đã nạp dữ liệu mẫu cho 3 vai trò.'
+                : 'Bộ mẫu đã có; giữ nguyên dữ liệu bạn đã chỉnh.',
+          ),
+        ),
+      );
+      await refresh();
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không nạp được bộ mẫu vì dữ liệu trùng hoặc không tương thích. Dữ liệu hiện có được giữ nguyên.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> openFeature(String kind) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => OperationsPage(repository: repository, kind: kind),
+      ),
+    );
+    if (mounted) await refresh();
+  }
+
+  Future<void> logout() async {
+    await (widget.auth ?? AuthService()).signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => LoginPage(auth: widget.auth)),
+      (_) => false,
+    );
+  }
+
+  Future<void> employeeContract(RowData row) async {
+    final operation = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Thêm hợp đồng / lương cơ bản'),
+              onTap: () => Navigator.pop(c, 'contract'),
+            ),
+            if (row['user_id'] == null)
+              ListTile(
+                title: const Text('Liên kết tài khoản đăng nhập'),
+                onTap: () => Navigator.pop(c, 'link'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || operation == null) return;
+    if (operation == 'link') {
+      final accounts = await repository.unlinkedAccounts();
+      if (!mounted) return;
+      await featureForm(
+        context,
+        'Liên kết tài khoản',
+        [
+          InputSpec(
+            'user',
+            'Tài khoản chưa có hồ sơ',
+            options: {
+              for (final a in accounts) '${a['id']}': '${a['username']}',
+            },
+          ),
+        ],
+        (v) => repository.linkEmployee(row['id'] as int, int.parse(v['user']!)),
+      );
+      if (mounted) await refresh();
+      return;
+    }
+    await featureForm(
+      context,
+      'Hợp đồng nhân viên',
+      [
+        const InputSpec('number', 'Số hợp đồng'),
+        const InputSpec('salary', 'Lương tháng VND', number: true),
+        const InputSpec(
+          'minutes',
+          'Phút chuẩn mỗi tháng',
+          value: '12480',
+          number: true,
+        ),
+        const InputSpec('start', 'Ngày hiệu lực YYYY-MM-DD'),
+      ],
+      (v) => repository.saveContract(
+        row['id'] as int,
+        v['number']!,
+        int.parse(v['salary']!),
+        int.parse(v['minutes']!),
+        DateTime.parse(v['start']!),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -60,7 +197,9 @@ class _WorkspaceState extends State<Workspace> {
 
   Future<void> refresh() async {
     final future = load();
-    setState(() => loading = future);
+    setState(() {
+      loading = future;
+    });
     try {
       await future;
     } catch (_) {
@@ -122,6 +261,30 @@ class _WorkspaceState extends State<Workspace> {
           ),
         ),
         const SizedBox(height: 18),
+        section('Chức năng'),
+        if (widget.session.role == 'Admin')
+          OutlinedButton.icon(
+            onPressed: installDemoData,
+            icon: const Icon(Icons.dataset_outlined),
+            label: const Text('Nạp dữ liệu mẫu M01–M07'),
+          ),
+        for (final feature in [
+          ('schedule', 'M01 / M03 / M04 • Lịch ca, phân ca & điểm danh'),
+          ('payroll', 'M02 • Tính lương & kiểm tra 6 bước'),
+          ('swaps', 'M05 • Đổi ca'),
+          ('stars', 'M06 • Sao nhân viên'),
+          ('closures', 'M07 • Ảnh & báo cáo đóng ca'),
+          ('attendance', 'Lịch sử điểm danh'),
+          if (widget.session.role != 'Nhân viên') ...[
+            ('devices', 'Duyệt thiết bị nhân viên'),
+            ('branches', 'Cấu hình GPS & Wi-Fi chi nhánh'),
+          ],
+        ])
+          ListTile(
+            title: Text(feature.$2),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openFeature(feature.$1),
+          ),
         const Text(
           'Kéo xuống để cập nhật dữ liệu.',
           style: TextStyle(color: muted),
@@ -158,12 +321,7 @@ class _WorkspaceState extends State<Workspace> {
         ),
         const SizedBox(height: 24),
         OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute<void>(
-              builder: (_) => LoginPage(auth: widget.auth),
-            ),
-            (_) => false,
-          ),
+          onPressed: logout,
           icon: const Icon(Icons.logout),
           label: const Text('Đăng xuất'),
         ),
@@ -172,6 +330,16 @@ class _WorkspaceState extends State<Workspace> {
     final rows = data as List<RowData>;
     return [
       heading(destinations[tab].$1, widget.session.role.toUpperCase()),
+      if (current == 'shifts')
+        OutlinedButton(
+          onPressed: () => openFeature('schedule'),
+          child: const Text('Quản lý ca & điểm danh'),
+        ),
+      if (current == 'payroll')
+        OutlinedButton(
+          onPressed: () => openFeature('payroll'),
+          child: const Text('Kỳ lương & tính lương 6 bước'),
+        ),
       if (current == 'users' || current == 'employees') ...[
         FilledButton.icon(
           onPressed: () => create(current == 'users'),
@@ -192,6 +360,21 @@ class _WorkspaceState extends State<Workspace> {
         panel(
           child: switch (current) {
             'users' => ListTile(
+              onTap: () async {
+                await featureForm(
+                  context,
+                  'Gmail được phép đăng nhập',
+                  [
+                    InputSpec(
+                      'email',
+                      'Gmail của tài khoản',
+                      value: row['email']?.toString() ?? '',
+                    ),
+                  ],
+                  (v) => repository.setUserEmail(row['id'] as int, v['email']!),
+                );
+                if (mounted) await refresh();
+              },
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.person_outline, color: green),
               title: Text(value(row, 'username')),
@@ -200,6 +383,7 @@ class _WorkspaceState extends State<Workspace> {
               ),
             ),
             'employees' => ListTile(
+              onTap: () => employeeContract(row),
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.badge_outlined, color: green),
               title: Text(value(row, 'full_name')),
@@ -208,11 +392,21 @@ class _WorkspaceState extends State<Workspace> {
               ),
             ),
             'shifts' => ListTile(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => ShiftPage(
+                    repository: repository,
+                    shiftId: row['shift_id'] as int,
+                    assignmentId: row['assignment_id'] as int,
+                  ),
+                ),
+              ),
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.schedule, color: green),
               title: Text(value(row, 'full_name')),
               subtitle: Text(
-                '${value(row, 'starts_at')} — ${value(row, 'ends_at')} (UTC)\n${value(row, 'branch_name')} • ${value(row, 'status')}',
+                '${localTime(row['starts_at'])} — ${localTime(row['ends_at'])} (giờ VN)\n${value(row, 'branch_name')} • ${value(row, 'status')}',
               ),
             ),
             _ => Column(
@@ -226,6 +420,18 @@ class _WorkspaceState extends State<Workspace> {
                 money('Khấu trừ', currency(row['deductions_vnd'])),
                 money('Thực lĩnh', currency(row['net_pay_vnd']), bold: true),
                 pill(value(row, 'status')),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => PayDetailPage(
+                        repository: repository,
+                        id: row['id'] as int,
+                      ),
+                    ),
+                  ),
+                  child: const Text('Chi tiết & 6 bước tính lương'),
+                ),
               ],
             ),
           },
@@ -251,53 +457,56 @@ class _WorkspaceState extends State<Workspace> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 650),
-          child: FutureBuilder<Object>(
-            future: loading,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          snapshot.error is AuthException
-                              ? (snapshot.error as AuthException).message
-                              : 'Không đọc được dữ liệu. Hãy thử lại.',
-                        ),
-                        TextButton(
-                          onPressed: refresh,
-                          child: const Text('Thử lại'),
-                        ),
-                        TextButton(
-                          onPressed: () =>
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => LoginPage(auth: widget.auth),
-                                ),
-                                (_) => false,
+          child: current == 'shifts'
+              ? ScheduleScreen(repository: repository)
+              : FutureBuilder<Object>(
+                  future: loading,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                snapshot.error is AuthException
+                                    ? (snapshot.error as AuthException).message
+                                    : 'Không đọc được dữ liệu. Hãy thử lại.',
                               ),
-                          child: const Text('Về đăng nhập'),
+                              TextButton(
+                                onPressed: refresh,
+                                child: const Text('Thử lại'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pushAndRemoveUntil(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            LoginPage(auth: widget.auth),
+                                      ),
+                                      (_) => false,
+                                    ),
+                                child: const Text('Về đăng nhập'),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-              return RefreshIndicator(
-                onRefresh: refresh,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(20),
-                  children: content(snapshot.data!),
+                      );
+                    }
+                    return RefreshIndicator(
+                      onRefresh: refresh,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(20),
+                        children: content(snapshot.data!),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         ),
       ),
     ),

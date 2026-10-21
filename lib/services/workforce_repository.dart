@@ -2,6 +2,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'auth_service.dart';
 import 'local_database.dart';
+import 'attendance_evidence.dart';
+
+import 'dart:math' as math;
+import 'dart:convert';
+import 'dart:io';
+
+import 'payroll_source.dart';
+import 'feature_sample_data.dart';
+
+part 'workforce_operations.dart';
 
 typedef RowData = Map<String, Object?>;
 
@@ -10,6 +20,18 @@ class WorkforceRepository {
     : _open = openDatabase ?? (() => LocalDatabase.instance.database);
   final UserSession session;
   final Future<Database> Function() _open;
+
+  /// Chỉ Admin được chủ động nạp mẫu vào bản database đã tồn tại trên thiết bị.
+  /// Seeder có marker riêng nên không xóa, ghi đè hoặc nhân đôi dữ liệu.
+  Future<bool> installDemoData() async {
+    final db = await _open();
+    await _require(db, 'users.manage');
+    try {
+      return await installFeatureSamples(db);
+    } on SampleDataException catch (e) {
+      throw AuthException(e.message);
+    }
+  }
 
   Future<bool> _can(DatabaseExecutor db, String permission) async =>
       (await db.rawQuery(
@@ -161,7 +183,7 @@ class WorkforceRepository {
       )).isNotEmpty) {
         throw const AuthException('Mã nhân viên đã tồn tại.');
       }
-      final now = DateTime.now();
+      final now = DateTime.now().toUtc().add(const Duration(hours: 7));
       await tx.insert('employees', {
         'employee_code': code.trim(),
         'full_name': name.trim(),

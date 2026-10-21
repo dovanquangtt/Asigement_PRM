@@ -6,6 +6,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'local_database.dart';
 
+import 'package:google_sign_in/google_sign_in.dart';
+
 class AuthException implements Exception {
   const AuthException(this.message);
   final String message;
@@ -62,6 +64,59 @@ class AuthService {
     limit: 1,
   )).isNotEmpty;
 
+  static Future<void>? _googleInitialization;
+  Future<UserSession> signInGoogle() async {
+    // Cấu hình riêng cho bản build bằng --dart-define, không yêu cầu biến
+    // môi trường toàn máy và không ghi Client ID cố định vào source code.
+    const clientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+    if (clientId.isEmpty) {
+      throw const AuthException(
+        'Chưa cấu hình Google OAuth. Cần GOOGLE_WEB_CLIENT_ID và đăng ký SHA-1 của bản Android.',
+      );
+    }
+    _googleInitialization ??= GoogleSignIn.instance.initialize(
+      serverClientId: clientId,
+    );
+    await _googleInitialization;
+    await GoogleSignIn.instance.signOut();
+    final account = await GoogleSignIn.instance.authenticate();
+    final db = await _openDatabase();
+    // Google xác thực danh tính; SQLite vẫn quyết định tài khoản và vai trò.
+    final rows = await db.query(
+      'users',
+      where: 'email=? AND is_active=1',
+      whereArgs: [account.email],
+    );
+    if (rows.isEmpty) {
+      await GoogleSignIn.instance.signOut();
+      throw const AuthException(
+        'Gmail chưa được Admin cấp tài khoản trong ứng dụng.',
+      );
+    }
+    final user = rows.single;
+    if (user['google_subject'] != null &&
+        user['google_subject'] != account.id) {
+      throw const AuthException('Liên kết Google không khớp.');
+    }
+    await db.update(
+      'users',
+      {'google_subject': account.id},
+      where: 'id=?',
+      whereArgs: [user['id']],
+    );
+    return _sessionFor(db, user);
+  }
+
+  Future<void> signOut() async {
+    if (_googleInitialization != null) {
+      try {
+        await GoogleSignIn.instance.signOut();
+      } catch (_) {
+        /* Local session is still cleared by navigation. */
+      }
+    }
+  }
+
   Future<UserSession> signIn(String username, String password) async {
     final db = await _openDatabase();
     final users = await db.query(
@@ -89,6 +144,13 @@ class AuthService {
         current.single['password_hash'] != user['password_hash']) {
       throw const AuthException(invalidCredentials);
     }
+    return _sessionFor(db, current.single);
+  }
+
+  Future<UserSession> _sessionFor(
+    Database db,
+    Map<String, Object?> user,
+  ) async {
     final roles = await db.rawQuery(
       'SELECT r.code FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ?',
       [user['id']],

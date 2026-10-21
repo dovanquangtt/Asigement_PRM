@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart' as mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'sample_data.dart';
+import 'feature_migrations.dart';
+import 'feature_sample_data.dart';
 
 /// Database SQLite riêng của thiết bị, sao chép từ asset đúng một lần.
 class LocalDatabase {
@@ -59,6 +61,9 @@ class LocalDatabase {
     );
     try {
       await installSampleData(db);
+      await migrateFeatures(db);
+      // Bổ sung bản demo cũ kể cả khi đã nhập ca; không ghi đè dữ liệu đang dùng.
+      await installFeatureSamples(db, onlyForDemoAccounts: true);
       return db;
     } catch (_) {
       await db.close();

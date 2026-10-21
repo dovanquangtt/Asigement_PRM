@@ -8,7 +8,10 @@ void main() {
   test(
     'Bundled database contains three usable accounts and employee profiles',
     () async {
-      final fixture = await DatabaseFixture.open(keepSampleUsers: true);
+      final fixture = await DatabaseFixture.open(
+        keepSampleUsers: true,
+        bundledData: true,
+      );
       try {
         for (final input in [
           ('admin', 'Admin@12345', 'Admin'),
