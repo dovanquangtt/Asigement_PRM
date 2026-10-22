@@ -7,6 +7,7 @@ import '../widgets/common_widgets.dart';
 import 'login_screen.dart';
 import 'operations_screen.dart';
 import 'notifications_screen.dart';
+import 'attendance_management_screen.dart';
 import 'payroll_screen.dart';
 import 'schedule_screen.dart';
 
@@ -50,7 +51,7 @@ class _WorkspaceState extends State<Workspace> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Nạp dữ liệu mẫu M01–M07?'),
+        title: const Text('Nạp dữ liệu mẫu?'),
         content: const Text(
           'Bổ sung bộ tình huống DEMO vào database đang dùng. Không xóa dữ liệu, không ghi đè mật khẩu hoặc nạp lặp lại bộ mẫu đã có.',
         ),
@@ -102,7 +103,13 @@ class _WorkspaceState extends State<Workspace> {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => OperationsPage(repository: repository, kind: kind),
+        builder: (_) =>
+            kind == 'attendance_review' || kind == 'attendance_management'
+            ? AttendanceManagementScreen(
+                repository: repository,
+                self: widget.session.role == 'Nhân viên',
+              )
+            : OperationsPage(repository: repository, kind: kind),
       ),
     );
     if (mounted) await refresh();
@@ -267,19 +274,17 @@ class _WorkspaceState extends State<Workspace> {
         ),
         const SizedBox(height: 18),
         section('Chức năng'),
-        if (widget.session.role == 'Admin')
-          OutlinedButton.icon(
-            onPressed: installDemoData,
-            icon: const Icon(Icons.dataset_outlined),
-            label: const Text('Nạp dữ liệu mẫu M01–M07'),
-          ),
         for (final feature in [
-          ('schedule', 'M01 / M03 / M04 • Lịch ca, phân ca & điểm danh'),
-          ('payroll', 'M02 • Tính lương & kiểm tra 6 bước'),
-          ('swaps', 'M05 • Đổi ca'),
-          ('stars', 'M06 • Sao nhân viên'),
-          ('closures', 'M07 • Ảnh & báo cáo đóng ca'),
+          ('schedule', 'Lịch ca, phân ca & điểm danh'),
+          ('payroll', 'Tính lương & kiểm tra 6 bước'),
+          ('swaps', 'Đổi ca'),
+          ('stars', 'Sao nhân viên'),
+          ('closures', 'Ảnh & báo cáo đóng ca'),
           ('attendance', 'Lịch sử điểm danh'),
+          if (widget.session.role != 'Nhân viên')
+            ('attendance_review', 'Quản lý chấm công & ngoại lệ'),
+          if (widget.session.role == 'Nhân viên')
+            ('attendance_management', 'Công của tôi & yêu cầu sửa công'),
           if (widget.session.role != 'Nhân viên') ...[
             ('devices', 'Duyệt thiết bị nhân viên'),
             ('branches', 'Cấu hình GPS & Wi-Fi chi nhánh'),
@@ -449,7 +454,7 @@ class _WorkspaceState extends State<Workspace> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text('Mộc • ${widget.session.role}'),
+      title: Text('ANH EM QUÁN • ${widget.session.role}'),
       actions: [
         IconButton(
           tooltip: 'Đăng xuất',

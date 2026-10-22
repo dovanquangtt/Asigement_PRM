@@ -20,7 +20,7 @@ class HomeScreen extends StatelessWidget {
         const BrandMark(),
         const SizedBox(width: 10),
         const Text(
-          'mộc',
+          'ANH EM QUÁN',
           style: TextStyle(
             fontSize: 27,
             fontWeight: FontWeight.w800,
@@ -247,7 +247,7 @@ class HomeScreen extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(
-                      'Vào ca lúc ${actions.clock(controller.enteredAt!)} • dữ liệu mẫu',
+                      'Vào ca lúc ${actions.clock(controller.enteredAt!)}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 11,
@@ -353,7 +353,7 @@ class HomeScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.approval_outlined, color: green),
               title: const Text('Yêu cầu đã gửi'),
-              subtitle: Text('${controller.requests.length} yêu cầu mẫu'),
+              subtitle: Text('${controller.requests.length} yêu cầu'),
               trailing: const Icon(Icons.chevron_right),
               onTap: actions.requestList,
             ),
@@ -362,7 +362,7 @@ class HomeScreen extends StatelessWidget {
               title: const Text('Tặng sao cho Linh'),
               onTap: () {
                 controller.update(() => controller.stars++);
-                actions.toast('Đã tặng 1 sao mẫu');
+                actions.toast('Đã tặng 1 sao');
               },
             ),
             if (controller.role == 'Admin')

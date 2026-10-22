@@ -158,6 +158,14 @@ void main() {
       throwsA(isA<AuthException>()),
     );
     await employee.registerDevice(evidence(start));
+    expect(
+      (await employee.inspectAttendance(
+        a,
+        evidence(start),
+        now: start,
+      ))['device_status'],
+      'pending',
+    );
     await expectLater(
       manager.registerDevice(evidence(start)),
       throwsA(isA<AuthException>()),
@@ -183,6 +191,86 @@ void main() {
       manager.recordAttendance(a, 'check_in', evidence(start), now: start),
       throwsA(isA<AuthException>()),
     );
+  });
+  test('M01 preview is read-only and final confirmation rechecks revoked device and changed Wi-Fi', () async {
+    final assignment = await assigned();
+    await ready();
+    final preview = await employee.inspectAttendance(
+      assignment,
+      evidence(start),
+      now: start,
+    );
+    expect(preview['accepted'], isTrue);
+    expect(preview['device_ok'], isTrue);
+    expect(preview['gps_ok'], isTrue);
+    expect(preview['wifi_ok'], isTrue);
+    expect(preview['distance_m'], closeTo(0, .01));
+    expect(await f.db.query('attendance_events'), isEmpty);
+    expect(await f.db.query('attendance_records'), isEmpty);
+    final device = (await f.db.query('employee_devices')).single;
+    await manager.approveDevice(device['id'] as int, revoke: true);
+    final rejected = await employee.recordAttendance(
+      assignment,
+      'check_in',
+      evidence(start),
+      now: start,
+    );
+    expect(rejected['accepted'], isFalse);
+    await manager.approveDevice(device['id'] as int);
+    expect(
+      (await employee.recordAttendance(
+        assignment,
+        'check_in',
+        evidence(start, bssid: '00:00:00:00:00:00'),
+        now: start,
+      ))['accepted'],
+      isFalse,
+    );
+    expect(await f.db.query('attendance_records'), isEmpty);
+    expect(await f.db.query('attendance_events'), hasLength(2));
+  });
+
+  test('M01 preview rejects invalid coordinates, poor accuracy, stale data and another employee', () async {
+    final assignment = await assigned();
+    await ready();
+    for (final sample in [
+      AttendanceEvidence(
+        deviceIdentifier: 'test_device',
+        platform: 'android',
+        collectedAt: start,
+        latitude: 999,
+        longitude: 106.69,
+        accuracy: 5,
+        ssid: 'Moc',
+        bssid: 'aa:bb:cc:dd:ee:ff',
+      ),
+      AttendanceEvidence(
+        deviceIdentifier: 'test_device',
+        platform: 'android',
+        collectedAt: start,
+        latitude: 10.77,
+        longitude: 106.69,
+        accuracy: 150,
+        ssid: 'Moc',
+        bssid: 'aa:bb:cc:dd:ee:ff',
+      ),
+      evidence(start, mock: true),
+      evidence(start.subtract(const Duration(minutes: 3))),
+    ]) {
+      expect(
+        (await employee.inspectAttendance(
+          assignment,
+          sample,
+          now: start,
+        ))['accepted'],
+        isFalse,
+      );
+    }
+    await expectLater(
+      manager.inspectAttendance(assignment, evidence(start), now: start),
+      throwsA(isA<AuthException>()),
+    );
+    expect(await f.db.query('attendance_events'), isEmpty);
   });
   test(
     'M02 six payroll checks, item totals, own data, approval lock and rollback',

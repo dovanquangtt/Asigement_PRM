@@ -109,7 +109,7 @@ class ProfileScreen extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.beach_access_outlined, color: green),
             title: const Text('Nghỉ phép'),
-            subtitle: const Text('Còn 8 ngày • dữ liệu mẫu'),
+            subtitle: const Text('Còn 8 ngày'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => actions.request('Xin nghỉ phép'),
           ),
@@ -144,7 +144,7 @@ class ProfileScreen extends StatelessWidget {
     ),
     const SizedBox(height: 20),
     const Text(
-      'Mộc • Phiên bản trải nghiệm 1.0\nDữ liệu chỉ lưu trong phiên sử dụng.',
+      'ANH EM QUÁN • Phiên bản trải nghiệm 1.0\nDữ liệu chỉ lưu trong phiên sử dụng.',
       textAlign: TextAlign.center,
       style: TextStyle(color: Colors.black45, fontSize: 12, height: 1.7),
     ),

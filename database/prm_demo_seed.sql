@@ -93,7 +93,7 @@ INSERT INTO "user_roles" ("user_id","role_id") VALUES (2,2);
 INSERT INTO "user_roles" ("user_id","role_id") VALUES (3,3);
 
 -- branches: 1 rows
-INSERT INTO "branches" ("id","code","name","address","latitude","longitude","geofence_radius_m","require_gps","require_wifi","require_registered_device") VALUES (1,'MOC_DEMO','Mộc - Chi nhánh mẫu','TP. Hồ Chí Minh (dữ liệu mẫu)',10.7769,106.7009,100,1,1,1);
+INSERT INTO "branches" ("id","code","name","address","latitude","longitude","geofence_radius_m","require_gps","require_wifi","require_registered_device") VALUES (1,'MOC_DEMO','ANH EM QUÁN','TP. Hồ Chí Minh',10.7769,106.7009,100,1,1,1);
 
 -- branch_wifi: 1 rows
 INSERT INTO "branch_wifi" ("id","branch_id","ssid","bssid","is_active") VALUES (1,1,'MOC_DEMO_WIFI','02:00:00:00:de:01',1);
@@ -110,9 +110,9 @@ INSERT INTO "positions" ("id","code","name") VALUES (3,'WAITER','Nhân viên ph�
 INSERT INTO "positions" ("id","code","name") VALUES (4,'CASHIER','Thu ngân');
 
 -- employees: 3 rows
-INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (1,1,'DEMO_ADMIN','Quản trị viên mẫu',NULL,NULL,NULL,1,2,1,NULL,'2026-10-01',NULL,'active');
-INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (2,2,'DEMO_MANAGER','Quản lý mẫu',NULL,NULL,NULL,1,2,1,NULL,'2026-10-01',NULL,'active');
-INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (3,3,'DEMO_EMPLOYEE','Nhân viên mẫu',NULL,NULL,NULL,1,2,3,NULL,'2026-10-01',NULL,'active');
+INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (1,1,'DEMO_ADMIN','Nguyễn Xuân Bắc',NULL,NULL,NULL,1,2,1,NULL,'2026-10-01',NULL,'active');
+INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (2,2,'DEMO_MANAGER','Nguyễn Văn Trường',NULL,NULL,NULL,1,2,1,NULL,'2026-10-01',NULL,'active');
+INSERT INTO "employees" ("id","user_id","employee_code","full_name","birth_date","phone","address","branch_id","department_id","position_id","manager_id","hire_date","termination_date","status") VALUES (3,3,'DEMO_EMPLOYEE','Đỗ Văn Quang',NULL,NULL,NULL,1,2,3,NULL,'2026-10-01',NULL,'active');
 
 -- employee_devices: 5 rows
 INSERT INTO "employee_devices" ("id","employee_id","device_identifier","platform","registered_at","revoked_at","approved_by") VALUES (1,1,'DEMO_DEVICE_ADMIN','android (mẫu, không phải thiết bị thật)','2026-10-08 00:00:00',NULL,2);
@@ -127,10 +127,10 @@ INSERT INTO "contracts" ("id","employee_id","contract_number","contract_type","s
 INSERT INTO "contracts" ("id","employee_id","contract_number","contract_type","start_date","end_date","salary_basis","base_salary_vnd","hourly_rate_vnd","standard_minutes_per_month","status","document_url") VALUES (3,3,'DEMO_CT_EMPLOYEE','indefinite','2026-10-08',NULL,'monthly',10000000,0,12480,'active',NULL);
 
 -- shift_templates: 4 rows
-INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (1,'DEMO_MORNING','Ca sáng DEMO','08:00','16:00',0,30,5);
-INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (2,'DEMO_EVENING','Ca chiều DEMO','17:00','21:00',0,15,5);
-INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (3,'DEMO_SHORT','Ca ngắn DEMO','21:30','23:00',0,0,5);
-INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (4,'DEMO_NIGHT','Ca qua đêm DEMO','22:00','06:00',1,30,5);
+INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (1,'DEMO_MORNING','Ca sáng','08:00','16:00',0,30,5);
+INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (2,'DEMO_EVENING','Ca chiều','17:00','21:00',0,15,5);
+INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (3,'DEMO_SHORT','Ca ngắn','21:30','23:00',0,0,5);
+INSERT INTO "shift_templates" ("id","code","name","start_time","end_time","ends_next_day","break_minutes","late_grace_minutes") VALUES (4,'DEMO_NIGHT','Ca qua đêm','22:00','06:00',1,30,5);
 
 -- shifts: 13 rows
 INSERT INTO "shifts" ("id","branch_id","template_id","starts_at","ends_at","required_staff","status","created_by","note") VALUES (1,1,1,'2026-10-09 01:00:00','2026-10-09 09:00:00',3,'closed',2,'[DEMO HISTORY_0] Dữ liệu mẫu để thử chức năng; giờ Việt Nam.');

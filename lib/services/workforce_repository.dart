@@ -12,6 +12,8 @@ import 'payroll_source.dart';
 import 'feature_sample_data.dart';
 
 part 'workforce_operations.dart';
+part 'attendance_review.dart';
+part 'attendance_management.dart';
 
 typedef RowData = Map<String, Object?>;
 
@@ -264,7 +266,7 @@ class WorkforceRepository {
       )).isNotEmpty) {
         throw const AuthException('Mã nhân viên đã tồn tại.');
       }
-      final now = DateTime.now().toUtc().add(const Duration(hours: 7));
+      final now = DateTime.now();
       await tx.insert('employees', {
         'employee_code': code.trim(),
         'full_name': name.trim(),

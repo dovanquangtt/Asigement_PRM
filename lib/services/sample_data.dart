@@ -25,8 +25,8 @@ Future<void> installSampleData(Database db) async {
     final branchId = existingBranch.isEmpty
         ? await tx.insert('branches', {
             'code': 'MOC_DEMO',
-            'name': 'Mộc - Chi nhánh mẫu',
-            'address': 'TP. Hồ Chí Minh (dữ liệu mẫu)',
+            'name': 'ANH EM QUÁN',
+            'address': 'TP. Hồ Chí Minh',
           })
         : existingBranch.single['id'] as int;
     final department = (await tx.query(
@@ -37,7 +37,7 @@ Future<void> installSampleData(Database db) async {
     for (final account in [
       (
         'admin',
-        'Quản trị viên mẫu',
+        'Nguyễn Xuân Bắc',
         'admin',
         'DEMO_ADMIN',
         r'$2a$12$ZqUZJ.zCISUQKfsPLESceupoKSZyeAuOAZF7l5bSzkmqzPGsW178G',
@@ -45,7 +45,7 @@ Future<void> installSampleData(Database db) async {
       ),
       (
         'manager',
-        'Quản lý mẫu',
+        'Nguyễn Văn Trường',
         'manager',
         'DEMO_MANAGER',
         r'$2a$12$EcfTvYmQlGC2wntz/pNoBezQlPGRDu6E8823yVJ0dNpcIc4jR6SJS',
@@ -53,7 +53,7 @@ Future<void> installSampleData(Database db) async {
       ),
       (
         'employee',
-        'Nhân viên mẫu',
+        'Đỗ Văn Quang',
         'employee',
         'DEMO_EMPLOYEE',
         r'$2a$12$NEDYhkcpBRpA4mwoZ2c34.KOX7GtUsDzaVgqpPIpWnVvcrMLd4ela',

@@ -34,9 +34,52 @@ void main() {
         )).single['password_hash'];
         await migrateFeatures(db);
         await migrateFeatures(db);
+        final team = await db.rawQuery(
+          'SELECT u.username,e.full_name,r.code FROM users u JOIN employees e ON e.user_id=u.id JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id ORDER BY u.username',
+        );
+        expect(team, [
+          {
+            'username': 'admin',
+            'full_name': 'Nguyễn Xuân Bắc',
+            'code': 'admin',
+          },
+          {
+            'username': 'employee',
+            'full_name': 'Đỗ Văn Quang',
+            'code': 'employee',
+          },
+          {
+            'username': 'manager',
+            'full_name': 'Nguyễn Văn Trường',
+            'code': 'manager',
+          },
+        ]);
+        expect(
+          await db.query(
+            'audit_logs',
+            where: 'action=?',
+            whereArgs: ['configure_team_identity_20261022'],
+          ),
+          hasLength(3),
+        );
+        await db.update(
+          'employees',
+          {'full_name': 'Tên được cập nhật sau đó'},
+          where: 'employee_code=?',
+          whereArgs: ['DEMO_EMPLOYEE'],
+        );
+        await migrateFeatures(db);
+        expect(
+          (await db.query(
+            'employees',
+            where: 'employee_code=?',
+            whereArgs: ['DEMO_EMPLOYEE'],
+          )).single['full_name'],
+          'Tên được cập nhật sau đó',
+        );
         expect(
           (await db.rawQuery('PRAGMA user_version')).single.values.single,
-          4,
+          6,
         );
         expect(
           (await db.query(

@@ -79,6 +79,7 @@ void main() {
     'Import conflict rolls back completely instead of changing existing data',
     () async {
       final f = await DatabaseFixture.open(keepSampleUsers: true);
+      final existingAudit = await f.db.query('audit_logs');
       try {
         await f.db.insert('shift_templates', {
           'code': 'DEMO_MORNING',
@@ -98,7 +99,7 @@ void main() {
         expect(await f.db.query('branch_wifi'), isEmpty);
         expect(await f.db.query('contracts'), isEmpty);
         expect(await f.db.query('shifts'), isEmpty);
-        expect(await f.db.query('audit_logs'), isEmpty);
+        expect(await f.db.query('audit_logs'), existingAudit);
       } finally {
         await f.dispose();
       }

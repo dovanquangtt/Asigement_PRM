@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,7 @@ import '../services/attendance_sensors.dart';
 import '../services/attendance_evidence.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
+import 'attendance_management_screen.dart';
 
 /// Ảnh mẫu dùng asset URI để không phụ thuộc đường dẫn máy tạo database.
 /// Ảnh camera thật vẫn được đọc từ thư mục riêng của app trên thiết bị.
@@ -211,14 +213,14 @@ class _FeatureFormState extends State<_FeatureForm> {
 
 String localTime(Object? value) {
   if (value == null) return 'Chưa có';
-  final d = utcTime(value).add(const Duration(hours: 7));
+  final d = utcTime(value).toLocal();
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
 DateTime inputTime(String value) =>
-    DateTime.parse('${value.trim().replaceFirst(' ', 'T')}+07:00').toUtc();
+    DateTime.parse(value.trim().replaceFirst(' ', 'T')).toUtc();
 String tomorrow(int hour) {
-  final d = DateTime.now().toUtc().add(const Duration(days: 1, hours: 7));
+  final d = DateTime.now().add(const Duration(days: 1));
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} ${hour.toString().padLeft(2, '0')}:00';
 }
 
@@ -241,6 +243,7 @@ class _OperationsPageState extends State<OperationsPage> {
   static const titles = {
     'schedule': 'Quản lý ca & lịch ca',
     'attendance': 'Lịch sử điểm danh',
+    'attendance_review': 'Duyệt điểm danh',
     'devices': 'Duyệt thiết bị',
     'payroll': 'Kỳ lương & 6 bước',
     'swaps': 'Yêu cầu đổi ca',
@@ -257,6 +260,7 @@ class _OperationsPageState extends State<OperationsPage> {
   Future<List<RowData>> load() => switch (widget.kind) {
     'schedule' => manager ? r.allShifts() : r.shifts(),
     'attendance' => r.attendanceHistory(),
+    'attendance_review' => r.attendanceSubmissions(),
     'devices' => r.devices(),
     'payroll' => r.periods(),
     'swaps' => r.swaps(),
@@ -295,6 +299,17 @@ class _OperationsPageState extends State<OperationsPage> {
 
   Widget button(String label, Future<void> Function() work) =>
       TextButton(onPressed: () => action(work), child: Text(label));
+  Future<void> reviewAttendance(RowData row, bool approve) async {
+    await featureForm(
+      context,
+      approve ? 'Duyệt điểm danh #${row['id']}' : 'Từ chối #${row['id']}',
+      const [InputSpec('note', 'Nhận xét / lý do kiểm tra')],
+      (values) =>
+          r.reviewAttendance(row['id'] as int, approve, note: values['note']!),
+    );
+    if (mounted) await refresh();
+  }
+
   Future<void> createShift() async {
     final branches = await r.branches();
     if (!mounted) return;
@@ -392,6 +407,16 @@ class _OperationsPageState extends State<OperationsPage> {
           'BSSID (aa:bb:cc:dd:ee:ff)',
           value: evidence?.bssid ?? '',
         ),
+        if (r.session.role == 'Admin')
+          InputSpec(
+            'overtime',
+            'Tăng ca cần duyệt?',
+            value: '${b['require_overtime_approval'] ?? 0}',
+            options: const {
+              '0': 'Không, tự ghi nhận',
+              '1': 'Có, chờ xác nhận tăng ca',
+            },
+          ),
       ],
       (v) => r.configureBranch(
         b['id'] as int,
@@ -400,6 +425,9 @@ class _OperationsPageState extends State<OperationsPage> {
         radius: int.parse(v['radius']!),
         ssid: v['ssid']!,
         bssid: v['bssid']!,
+        requireOvertimeApproval: v['overtime'] == null
+            ? null
+            : v['overtime'] == '1',
       ),
     );
     await refresh();
@@ -465,13 +493,67 @@ class _OperationsPageState extends State<OperationsPage> {
             ),
           ),
         );
+      case 'attendance_review':
+        final snapshot = jsonDecode(
+          row['checks_snapshot'] as String,
+        ) as Map<String, dynamic>;
+        final warnings = (snapshot['warnings'] as List).cast<String>();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '#${row['id']} • ${row['full_name']} • ${row['event_type'] == 'check_in' ? 'Vào ca' : 'Ra ca'}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${row['branch_name']}\nGửi: ${localTime(row['occurred_at'])}\nCa: ${localTime(row['starts_at'])} – ${localTime(row['ends_at'])}',
+            ),
+            Text(
+              'Trạng thái: ${row['result'] == 'pending_review'
+                  ? 'Chờ Admin duyệt'
+                  : row['result'] == 'accepted'
+                  ? 'Đã duyệt'
+                  : 'Đã từ chối'}',
+            ),
+            const Divider(),
+            SelectableText(
+              'Thiết bị được chọn: ${row['selected_device_identifier']}\nThiết bị thực tế: ${row['actual_device_identifier']}\nNền tảng: ${row['device_platform']}',
+            ),
+            Text(
+              'GPS: ${row['latitude'] ?? 'Không có'}, ${row['longitude'] ?? 'Không có'} • ±${row['gps_accuracy_m'] ?? '?'} m\nKhoảng cách lúc gửi: ${snapshot['distance_m'] ?? '?'} m / bán kính ${snapshot['radius_m']} m\nVị trí giả: ${row['evidence_mocked'] == 1 ? 'Có' : 'Không phát hiện'}\nWi-Fi: ${row['wifi_ssid'] ?? 'Không đọc được'}\nBSSID: ${row['wifi_bssid'] ?? 'Không đọc được'}',
+            ),
+            for (final warning in warnings)
+              Text(
+                '⚠ $warning',
+                style: const TextStyle(color: Colors.deepOrange),
+              ),
+            if (warnings.isEmpty)
+              const Text('Các điều kiện tự động đều đạt tại lúc gửi.'),
+            if (row['reviewed_at'] != null)
+              Text(
+                'Nhận xét: ${row['review_note']}\nDuyệt lúc: ${localTime(row['reviewed_at'])}',
+              ),
+            if (row['result'] == 'pending_review')
+              Wrap(
+                children: [
+                  button('Duyệt ghi công', () => reviewAttendance(row, true)),
+                  button('Từ chối', () => reviewAttendance(row, false)),
+                ],
+              ),
+          ],
+        );
       case 'attendance':
         return ListTile(
           title: Text(
             '${row['full_name']} • ${row['event_type'] == 'check_in' ? 'Vào ca' : 'Ra ca'}',
           ),
           subtitle: Text(
-            '${localTime(row['occurred_at'])}\n${row['result']} ${row['rejection_reason'] ?? ''}',
+            '${localTime(row['occurred_at'])}\n${row['result'] == 'pending_review'
+                ? 'Chờ Admin duyệt'
+                : row['result'] == 'accepted'
+                ? 'Đã ghi công'
+                : 'Bị từ chối'} ${row['review_note'] ?? row['rejection_reason'] ?? ''}',
           ),
         );
       case 'devices':
@@ -479,13 +561,15 @@ class _OperationsPageState extends State<OperationsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ListTile(
-              title: Text('${row['full_name']} • ${row['platform']}'),
+              title: Text(
+                '#${row['id']} • ${row['full_name']} • ${row['platform']}',
+              ),
               subtitle: Text(
                 row['revoked_at'] != null
                     ? 'Đã thu hồi'
                     : row['approved_by'] == null
-                    ? 'Chờ duyệt'
-                    : 'Đã duyệt',
+                    ? 'Chờ duyệt • Mã thiết bị: ${row['device_identifier']}'
+                    : 'Đã duyệt • Mã thiết bị: ${row['device_identifier']}',
               ),
             ),
             Wrap(
@@ -856,8 +940,8 @@ class _ShiftPageState extends State<ShiftPage> {
                     .firstOrNull?['id']
                 as int?;
 
-        final startVn = utcTime(row['starts_at']).add(const Duration(hours: 7));
-        final endVn = utcTime(row['ends_at']).add(const Duration(hours: 7));
+        final startVn = utcTime(row['starts_at']).toLocal();
+        final endVn = utcTime(row['ends_at']).toLocal();
         final durationMins = endVn.difference(startVn).inMinutes;
         final durationHoursStr = (durationMins / 60).toStringAsFixed(
           durationMins % 60 == 0 ? 0 : 1,
@@ -1235,30 +1319,62 @@ class AttendancePage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.assignmentId,
+    this.sensors,
   });
   final WorkforceRepository repository;
   final int assignmentId;
+  final AttendanceSensors? sensors;
   @override
   State<AttendancePage> createState() => _AttendancePageState();
 }
 
 class _AttendancePageState extends State<AttendancePage> {
-  AttendanceEvidence? evidence;
+  late final AttendanceSensors sensors = widget.sensors ?? AttendanceSensors();
+  final Map<String, bool> results = {};
+  final Map<String, String> details = {};
   bool busy = false;
-  String message = 'Kiểm tra thiết bị, GPS và Wi-Fi trước khi xác nhận.';
   String type = 'check_in';
-  Future<void> work(Future<void> Function() run) async {
-    if (busy) return;
-    setState(() => busy = true);
+  String message =
+      'Chọn thiết bị và gửi yêu cầu. Các kiểm tra bên dưới là thông tin tham khảo cho Admin.';
+  int selectedDevice = 0;
+  bool sent = false;
+  List<RowData> devices = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadDevices();
+  }
+
+  Future<void> loadDevices() async {
     try {
-      await run();
+      final rows = await widget.repository.myAttendanceDevices();
+      if (mounted) setState(() => devices = rows);
     } on AuthException catch (e) {
       if (mounted) setState(() => message = e.message);
     } catch (_) {
       if (mounted) {
         setState(
-          () => message =
-              'Không đọc được thiết bị/GPS/Wi-Fi. Kiểm tra quyền và kết nối.',
+          () => message = 'Không tải được danh sách thiết bị. Có thể chọn thiết bị đang sử dụng.',
+        );
+      }
+    }
+  }
+
+  bool get ready =>
+      ['device', 'gps', 'wifi'].every((key) => results[key] == true);
+
+  Future<void> work(Future<void> Function() action) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await action();
+    } on AuthException catch (e) {
+      if (mounted) setState(() => message = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => message = 'Không đọc được cảm biến. Kiểm tra quyền vị trí, bật GPS và kết nối Wi-Fi rồi thử lại.',
         );
       }
     } finally {
@@ -1266,29 +1382,79 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
-  Future<void> inspect() async {
-    final e = await AttendanceSensors().collect();
+  Future<void> inspect(String step) async {
+    setState(() {
+      results.remove(step);
+      details.remove(step);
+    });
     final c = await widget.repository.attendanceContext(widget.assignmentId);
-    if (mounted) {
-      setState(() {
-        evidence = e;
-        message =
-            'Thiết bị: ${e.platform}\nGPS: ${e.latitude}, ${e.longitude} (±${e.accuracy?.round()} m)\nWi-Fi: ${e.ssid ?? 'Không đọc được'}\nBSSID: ${e.bssid ?? 'Không đọc được'}\nChi nhánh: ${c['latitude'] ?? 'Chưa cấu hình'}, ${c['longitude'] ?? 'Chưa cấu hình'} • ${c['geofence_radius_m']} m\n${e.mocked ? 'Cảnh báo: vị trí giả' : ''}';
-      });
-    }
+    final required =
+        c[step == 'device' ? 'require_registered_device' : 'require_$step'] ==
+        1;
+    final e = await sensors.collect(
+      location: required && step != 'device',
+      gps: step == 'gps',
+      wifi: step == 'wifi',
+    );
+    final check = await widget.repository.inspectAttendance(
+      widget.assignmentId,
+      e,
+    );
+    if (!mounted) return;
+    setState(() {
+      results[step] = check['${step}_ok'] == true;
+      details[step] = !required
+          ? 'Chi nhánh không bắt buộc điều kiện này.'
+          : switch (step) {
+              'device' =>
+                check['device_valid'] == true
+                    ? 'Thiết bị đã được duyệt cho tài khoản của bạn.'
+                    : switch (check['device_status']) {
+                        'pending' =>
+                          'Thiết bị #${check['registration_id']} đang chờ duyệt. Đăng nhập Quản lý/Admin trên cùng máy → Trang chủ → Duyệt thiết bị nhân viên → duyệt #${check['registration_id']}. Sau đó quay lại kiểm tra.',
+                        'revoked' =>
+                          'Thiết bị #${check['registration_id']} đã bị thu hồi. Liên hệ Quản lý/Admin để kiểm tra và duyệt lại.',
+                        'another_employee' => 'Thiết bị này thuộc tài khoản nhân viên khác. Không thể đăng ký dùng chung để điểm danh.',
+                        _ => 'Thiết bị chưa đăng ký. Bấm “Đăng ký thiết bị này”, rồi nhờ Quản lý/Admin duyệt trên cùng database.',
+                      },
+              'gps' =>
+                '${check['gps_valid'] == true ? 'Trong phạm vi' : 'GPS chưa hợp lệ'}'
+                    '\nKhoảng cách: ${check['distance_m'] == null ? 'chưa xác định' : '${(check['distance_m'] as num).round()} m'}'
+                    ' • Bán kính: ${check['radius_m']} m'
+                    '\nĐộ chính xác: ${e.accuracy == null ? 'chưa xác định' : '±${e.accuracy!.round()} m'}'
+                    '${e.mocked ? '\nPhát hiện vị trí giả.' : ''}',
+              _ =>
+                '${e.ssid ?? 'Không đọc được tên Wi-Fi'}'
+                    '\nBSSID: ${e.bssid ?? 'chưa xác định'}'
+                    '\n${check['wifi_valid'] == true ? 'Khớp Wi-Fi chi nhánh.' : 'Wi-Fi không khớp cấu hình chi nhánh.'}',
+            };
+      message = ready
+          ? 'Các bước kiểm tra đã đạt. Bạn có thể xác nhận.'
+          : 'Có cảnh báo. Bạn vẫn có thể gửi để Admin kiểm tra và quyết định.';
+    });
+  }
+
+  Future<void> register() async {
+    final e = await sensors.collect(location: false);
+    await widget.repository.registerDevice(e);
+    await loadDevices();
+    if (!mounted) return;
+    setState(() {
+      results.clear();
+      details.clear();
+      message = 'Đã đăng ký thiết bị. Bạn có thể chọn thiết bị này và gửi điểm danh cho Admin kiểm tra.';
+    });
   }
 
   Future<void> confirm() async {
-    // Chỉ gửi sau khi người dùng xác nhận; repository tự quyết định accepted/rejected.
-    if (evidence == null) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Xác nhận điểm danh?'),
-        content: Text(
-          type == 'check_in'
-              ? 'Ghi nhận vào ca bằng kết quả kiểm tra vừa thu thập.'
-              : 'Ghi nhận ra ca bằng kết quả kiểm tra vừa thu thập.',
+        title: Text(
+          type == 'check_in' ? 'Gửi yêu cầu vào ca?' : 'Gửi yêu cầu ra ca?',
+        ),
+        content: const Text(
+          'Ứng dụng đọc lại thiết bị, GPS và Wi-Fi. Nếu hợp lệ sẽ tự ghi nhận giờ thực tế; nếu bất thường sẽ chuyển quản lý chi nhánh hoặc Admin xử lý. Đi muộn chỉ được đánh dấu, không tự trừ lương.',
         ),
         actions: [
           TextButton(
@@ -1297,23 +1463,90 @@ class _AttendancePageState extends State<AttendancePage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Xác nhận'),
+            child: const Text('Gửi yêu cầu'),
           ),
         ],
       ),
     );
-    if (ok != true) return;
-    final result = await widget.repository.recordAttendance(
+    if (ok != true || !mounted) return;
+    final configuration = await widget.repository.attendanceContext(
+      widget.assignmentId,
+    );
+    final sample = await sensors.collectForReview(
+      requireGps: configuration['require_gps'] == 1,
+      requireWifi: configuration['require_wifi'] == 1,
+    );
+    final id = await widget.repository.submitAttendance(
       widget.assignmentId,
       type,
-      evidence!,
+      sample.evidence,
+      selectedDeviceId: selectedDevice == 0 ? null : selectedDevice,
+      collectionIssues: sample.issues,
     );
-    if (mounted) {
-      setState(
-        () => message =
-            '${result['accepted'] == true ? '✓' : '✗'} ${result['message']}',
-      );
-    }
+    if (!mounted) return;
+    final detail = await widget.repository.attendanceCaseDetail(
+      widget.assignmentId,
+    );
+    final event = (detail['events'] as List<RowData>).firstWhere(
+      (e) => e['id'] == id,
+    );
+    if (!mounted) return;
+    setState(() {
+      sent = true;
+      message = event['result'] == 'accepted'
+          ? 'Đã tự ghi nhận ${type == 'check_in' ? 'vào ca' : 'ra ca'} #$id.${(detail['record'] as RowData?)?['arrival_status'] == 'LATE' ? ' Có đi muộn, không cần duyệt riêng.' : ''} Xem Công của tôi để biết giờ và trạng thái tăng ca.'
+          : 'Yêu cầu #$id có dữ liệu bất thường, đã chuyển người có quyền xử lý. Chưa ghi công.';
+    });
+  }
+
+  Widget step(String key, String title, IconData icon) {
+    final passed = results[key];
+    final color = passed == null
+        ? Colors.blueGrey
+        : passed
+        ? green
+        : Colors.red.shade700;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Icon(
+                  passed == null
+                      ? Icons.radio_button_unchecked
+                      : passed
+                      ? Icons.check_circle
+                      : Icons.error_outline,
+                  color: color,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              details[key] ??
+                  (passed == null ? 'Chưa kiểm tra' : 'Đã kiểm tra'),
+              style: const TextStyle(fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: busy ? null : () => work(() => inspect(key)),
+              child: Text(passed == null ? title : 'Kiểm tra lại'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1322,44 +1555,104 @@ class _AttendancePageState extends State<AttendancePage> {
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        heading('Điểm danh ca làm', 'THIẾT BỊ · GPS · WI-FI'),
         const Text(
-          'Thiết bị cần được Quản lý/Admin duyệt. GPS và Wi-Fi phải khớp cấu hình chi nhánh.',
+          'Thiết bị, GPS và Wi-Fi hợp lệ sẽ tự ghi nhận công. Chỉ dữ liệu bất thường cần người quản lý kiểm tra. Đi muộn không cần duyệt riêng.',
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
+          key: ValueKey(type),
           initialValue: type,
+          decoration: const InputDecoration(labelText: 'Loại điểm danh'),
           items: const [
             DropdownMenuItem(value: 'check_in', child: Text('Vào ca')),
             DropdownMenuItem(value: 'check_out', child: Text('Ra ca')),
           ],
-          onChanged: busy ? null : (v) => setState(() => type = v!),
+          onChanged: busy
+              ? null
+              : (value) => setState(() {
+                  type = value!;
+                  sent = false;
+                  results.clear();
+                  details.clear();
+                }),
+        ),
+        const SizedBox(height: 20),
+        DropdownButtonFormField<int>(
+          initialValue: selectedDevice,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Thiết bị muốn điểm danh',
+          ),
+          items: [
+            const DropdownMenuItem(
+              value: 0,
+              child: Text('Thiết bị đang sử dụng'),
+            ),
+            for (final device in devices)
+              DropdownMenuItem(
+                value: device['id'] as int,
+                child: Text(
+                  '#${device['id']} • ${device['platform']} • ${device['approved_by'] == null ? 'Chờ duyệt' : 'Đã duyệt'}',
+                ),
+              ),
+          ],
+          onChanged: busy || sent
+              ? null
+              : (value) => setState(() => selectedDevice = value!),
         ),
         const SizedBox(height: 16),
-        panel(child: Text(message)),
+        step('device', 'Kiểm tra thiết bị', Icons.phonelink_lock_outlined),
+        OutlinedButton.icon(
+          onPressed: busy ? null : () => work(register),
+          icon: const Icon(Icons.app_registration),
+          label: const Text('Đăng ký thiết bị này'),
+        ),
+        const SizedBox(height: 12),
+        step('gps', 'Kiểm tra GPS', Icons.location_on_outlined),
+        step('wifi', 'Kiểm tra Wi-Fi', Icons.wifi),
+        Semantics(liveRegion: true, child: panel(child: Text(message))),
         const SizedBox(height: 16),
-        OutlinedButton(
+        FilledButton.icon(
+          onPressed: busy || sent ? null : () => work(confirm),
+          icon: const Icon(Icons.fact_check_outlined),
+          label: const Text('Xác nhận điểm danh'),
+        ),
+        if (busy)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: LinearProgressIndicator(),
+          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
           onPressed: busy
               ? null
-              : () => work(() async {
-                  final e = await AttendanceSensors().collect(location: false);
-                  await widget.repository.registerDevice(e);
-                  if (mounted) {
-                    setState(
-                      () => message = 'Đã đăng ký thiết bị. Nhờ Quản lý/Admin duyệt trước khi điểm danh.',
-                    );
-                  }
-                }),
-          child: const Text('Đăng ký thiết bị này'),
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => AttendanceCaseScreen(
+                      repository: widget.repository,
+                      assignmentId: widget.assignmentId,
+                    ),
+                  ),
+                ),
+          icon: const Icon(Icons.edit_calendar_outlined),
+          label: const Text('Xem công / yêu cầu sửa giờ'),
         ),
-        FilledButton(
-          onPressed: busy ? null : () => work(inspect),
-          child: const Text('Kiểm tra GPS & Wi-Fi'),
+        TextButton(
+          onPressed: busy
+              ? null
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => OperationsPage(
+                      repository: widget.repository,
+                      kind: 'attendance',
+                    ),
+                  ),
+                ),
+          child: const Text('Xem lịch sử điểm danh'),
         ),
-        FilledButton(
-          onPressed: busy || evidence == null ? null : () => work(confirm),
-          child: const Text('Xác nhận điểm danh'),
-        ),
-        if (busy) const LinearProgressIndicator(),
       ],
     ),
   );

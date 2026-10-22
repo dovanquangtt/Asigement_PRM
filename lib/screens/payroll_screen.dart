@@ -74,7 +74,7 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
         children: [
-          heading('Bảng lương của tôi', 'M02 • THU NHẬP CÁ NHÂN'),
+          heading('Bảng lương của tôi', 'THU NHẬP CÁ NHÂN'),
           if (latest != null) ...[
             Container(
               padding: const EdgeInsets.all(22),

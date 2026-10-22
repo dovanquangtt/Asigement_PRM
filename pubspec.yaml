@@ -71,6 +71,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
+    - assets/branding/anh_em_quan.jpg
     - database/prm_database.db
     - database/demo_assets/
 

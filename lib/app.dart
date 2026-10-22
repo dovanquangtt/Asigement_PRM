@@ -8,7 +8,7 @@ class PrmApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    title: 'Mộc • Nhân sự',
+    title: 'ANH EM QUÁN • Nhân sự',
     theme: buildAppTheme(),
     home: const DatabaseStartup(),
   );

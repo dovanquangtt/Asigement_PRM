@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/workforce_repository.dart';
+import 'attendance_management_screen.dart';
+import '../services/auth_service.dart';
 
 /// Hộp thông báo đọc trực tiếp từ SQLite của tài khoản đang đăng nhập.
 class NotificationsPage extends StatefulWidget {
@@ -67,6 +69,35 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     await widget.repository.markNotificationRead(
                       row['id'] as int,
                     );
+                    if (!mounted || !context.mounted) return;
+                    if ([
+                      'attendance_events',
+                      'attendance_records',
+                      'attendance_adjustment_requests',
+                    ].contains(row['related_entity'])) {
+                      try {
+                        final assignment = await widget.repository
+                            .attendanceNotificationAssignment(
+                              row['related_entity'] as String,
+                              row['related_id'] as int,
+                            );
+                        if (!mounted || !context.mounted) return;
+                        await Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => AttendanceCaseScreen(
+                              repository: widget.repository,
+                              assignmentId: assignment,
+                            ),
+                          ),
+                        );
+                      } on AuthException catch (e) {
+                        if (mounted && context.mounted) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      }
+                    }
                     if (mounted) await refresh();
                   },
                 ),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -14,7 +15,43 @@ import 'auth_service.dart';
 /// Đọc bằng chứng từ plugin trên điện thoại; không tự đánh dấu điểm danh hợp lệ.
 /// Quyền truy cập được hỏi khi dùng chức năng, không sửa cấu hình hệ điều hành.
 class AttendanceSensors {
-  Future<AttendanceEvidence> collect({bool location = true}) async {
+  /// Preserve missing/failed checks for Admin review instead of blocking submission.
+  Future<({AttendanceEvidence evidence, List<String> issues})>
+  collectForReview({bool requireGps = true, bool requireWifi = true}) async {
+    final device = await collect(location: false);
+    AttendanceEvidence? gpsSample, wifiSample;
+    final issues = <String>[];
+    try {
+      if (requireGps) gpsSample = await collect(wifi: false);
+    } catch (e) {
+      issues.add(e is AuthException ? e.message : 'Không thu thập được GPS');
+    }
+    try {
+      if (requireWifi) wifiSample = await collect(gps: false);
+    } catch (e) {
+      issues.add(e is AuthException ? e.message : 'Không thu thập được Wi-Fi');
+    }
+    return (
+      evidence: AttendanceEvidence(
+        deviceIdentifier: device.deviceIdentifier,
+        platform: device.platform,
+        collectedAt: gpsSample?.collectedAt ?? device.collectedAt,
+        latitude: gpsSample?.latitude,
+        longitude: gpsSample?.longitude,
+        accuracy: gpsSample?.accuracy,
+        mocked: gpsSample?.mocked ?? false,
+        ssid: wifiSample?.ssid,
+        bssid: wifiSample?.bssid,
+      ),
+      issues: issues,
+    );
+  }
+
+  Future<AttendanceEvidence> collect({
+    bool location = true,
+    bool gps = true,
+    bool wifi = true,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     // ID riêng cho lần cài app, không phụ thuộc đường dẫn hoặc máy phát triển.
     var installation = prefs.getString('device_installation');
@@ -46,27 +83,41 @@ class AttendanceSensors {
           'Cần cấp quyền vị trí để kiểm tra GPS và Wi-Fi.',
         );
       }
-      position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
+      if (gps) {
+        try {
+          position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 20),
+            ),
+          );
+        } on TimeoutException {
+          throw const AuthException(
+            'Chưa lấy được vị trí GPS. Hãy ra nơi thoáng, bật vị trí chính xác và thử lại.',
+          );
+        }
+      }
     }
     String? ssid, bssid;
-    if (location) {
-      final wifi = NetworkInfo();
-      ssid = await wifi.getWifiName();
-      bssid = await wifi.getWifiBSSID();
+    if (location && wifi) {
+      final network = NetworkInfo();
+      ssid = await network.getWifiName();
+      bssid = await network.getWifiBSSID();
+      if (ssid != null &&
+          ssid.length >= 2 &&
+          ssid.startsWith('"') &&
+          ssid.endsWith('"')) {
+        ssid = ssid.substring(1, ssid.length - 1);
+      }
     }
     return AttendanceEvidence(
       deviceIdentifier: identifier,
       platform: Platform.operatingSystem,
-      collectedAt: DateTime.now().toUtc(),
+      collectedAt: position?.timestamp.toUtc() ?? DateTime.now().toUtc(),
       latitude: position?.latitude,
       longitude: position?.longitude,
       accuracy: position?.accuracy,
-      ssid: ssid?.replaceAll('"', ''),
+      ssid: ssid,
       bssid: bssid,
       mocked: position?.isMocked ?? false,
     );

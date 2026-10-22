@@ -59,7 +59,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       return;
     }
 
-    final now = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final now = DateTime.now();
     final defaultStart =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${(now.day + 1).toString().padLeft(2, '0')} 08:00';
     final defaultEnd =
@@ -72,9 +72,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         InputSpec(
           'type',
           'Loại nghỉ',
-          options: {
-            for (final t in types) '${t['id']}': '${t['name']}',
-          },
+          options: {for (final t in types) '${t['id']}': '${t['name']}'},
         ),
         InputSpec('start', 'Từ ngày (YYYY-MM-DD HH:mm)', value: defaultStart),
         InputSpec('end', 'Đến ngày (YYYY-MM-DD HH:mm)', value: defaultEnd),
@@ -121,11 +119,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
         const InputSpec('reason', 'Lý do đổi ca'),
       ],
-      (v) => r.requestSwap(
-        ownAssignmentId,
-        int.parse(v['target']!),
-        v['reason']!,
-      ),
+      (v) =>
+          r.requestSwap(ownAssignmentId, int.parse(v['target']!), v['reason']!),
     );
     if (mounted) _reload();
   }
@@ -158,7 +153,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final nowVn = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final nowVn = DateTime.now();
     final startOfWeek = _mondayOfWeek(nowVn);
 
     return FutureBuilder<(List<RowData>, List<RowData>)>(
@@ -223,7 +218,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
         // Lọc ca làm
         final filteredShifts = allShifts.where((s) {
-          final dt = utcTime(s['starts_at']).add(const Duration(hours: 7));
+          final dt = utcTime(s['starts_at']).toLocal();
           if (_selectedDayIndex != null) {
             final weekdayIndex = dt.weekday - 1; // 0..6
             if (weekdayIndex != _selectedDayIndex) return false;
@@ -342,8 +337,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         decoration: BoxDecoration(
-                          color:
-                              _selectedDayIndex == null ? green : Colors.white,
+                          color: _selectedDayIndex == null
+                              ? green
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: _selectedDayIndex == null
@@ -361,8 +357,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               : null,
                         ),
                         child: InkWell(
-                          onTap: () =>
-                              setState(() => _selectedDayIndex = null),
+                          onTap: () => setState(() => _selectedDayIndex = null),
                           borderRadius: BorderRadius.circular(14),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -400,7 +395,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     Builder(
                       builder: (_) {
                         final dayDate = startOfWeek.add(Duration(days: i));
-                        final isToday = dayDate.year == nowVn.year &&
+                        final isToday =
+                            dayDate.year == nowVn.year &&
                             dayDate.month == nowVn.month &&
                             dayDate.day == nowVn.day;
                         final isSelected = _selectedDayIndex == i;
@@ -436,12 +432,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                     setState(() => _selectedDayIndex = i),
                                 borderRadius: BorderRadius.circular(14),
                                 child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   child: Column(
                                     children: [
                                       Text(
-                                        ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][i],
+                                        [
+                                          'T2',
+                                          'T3',
+                                          'T4',
+                                          'T5',
+                                          'T6',
+                                          'T7',
+                                          'CN',
+                                        ][i],
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
@@ -609,7 +614,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                 ),
                               ),
                             ),
-                            _buildStatusPill(leave['status']?.toString() ?? 'pending'),
+                            _buildStatusPill(
+                              leave['status']?.toString() ?? 'pending',
+                            ),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -689,9 +696,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       selected: isSelected,
       selectedColor: green,
       backgroundColor: Colors.white,
-      side: BorderSide(
-        color: isSelected ? green : const Color(0xFFE8EDE7),
-      ),
+      side: BorderSide(color: isSelected ? green : const Color(0xFFE8EDE7)),
       labelStyle: TextStyle(
         fontSize: 13,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
@@ -705,9 +710,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Widget _buildStatusPill(String status) {
     final (label, bg, fg) = switch (status) {
-      'approved' => ('Đã duyệt', const Color(0xFFE8F8F5), const Color(0xFF27AE60)),
-      'rejected' => ('Từ chối', const Color(0xFFFDEDEC), const Color(0xFFC0392B)),
-      'cancelled' => ('Đã hủy', const Color(0xFFF2F4F4), const Color(0xFF7F8C8D)),
+      'approved' => (
+        'Đã duyệt',
+        const Color(0xFFE8F8F5),
+        const Color(0xFF27AE60),
+      ),
+      'rejected' => (
+        'Từ chối',
+        const Color(0xFFFDEDEC),
+        const Color(0xFFC0392B),
+      ),
+      'cancelled' => (
+        'Đã hủy',
+        const Color(0xFFF2F4F4),
+        const Color(0xFF7F8C8D),
+      ),
       _ => ('Chờ duyệt', const Color(0xFFFEF5E7), const Color(0xFFE67E22)),
     };
 
@@ -719,18 +736,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: fg,
-        ),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg),
       ),
     );
   }
 
   Widget _buildShiftCard(BuildContext context, RowData shift) {
-    final startVn = utcTime(shift['starts_at']).add(const Duration(hours: 7));
-    final endVn = utcTime(shift['ends_at']).add(const Duration(hours: 7));
+    final startVn = utcTime(shift['starts_at']).toLocal();
+    final endVn = utcTime(shift['ends_at']).toLocal();
     final durationMins = endVn.difference(startVn).inMinutes;
     final durationHoursStr = (durationMins / 60).toStringAsFixed(
       durationMins % 60 == 0 ? 0 : 1,
@@ -929,8 +942,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF4F6F4),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                           child: Text(
                                             '👤 $name',
@@ -993,16 +1007,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               ).then((_) => _reload()),
                               style: FilledButton.styleFrom(
                                 backgroundColor: isInProgress ? green : ink,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              icon: const Icon(Icons.fingerprint_rounded,
-                                  size: 20),
+                              icon: const Icon(
+                                Icons.fingerprint_rounded,
+                                size: 20,
+                              ),
                               label: Text(
-                                isInProgress ? 'Điểm danh vào/ra ca' : 'Điểm danh',
+                                isInProgress
+                                    ? 'Điểm danh vào/ra ca'
+                                    : 'Điểm danh',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
@@ -1018,14 +1037,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                             child: OutlinedButton.icon(
                               onPressed: () => _requestSwap(assignmentId),
                               style: OutlinedButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              icon: const Icon(Icons.swap_horiz_rounded,
-                                  size: 18),
+                              icon: const Icon(
+                                Icons.swap_horiz_rounded,
+                                size: 18,
+                              ),
                               label: const Text(
                                 'Đổi ca',
                                 style: TextStyle(
@@ -1054,14 +1076,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                                 ),
                               ).then((_) => _reload()),
                               style: OutlinedButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              icon: const Icon(Icons.camera_alt_outlined,
-                                  size: 18),
+                              icon: const Icon(
+                                Icons.camera_alt_outlined,
+                                size: 18,
+                              ),
                               label: const Text(
                                 'Báo cáo & đóng ca',
                                 style: TextStyle(
@@ -1118,16 +1143,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     required String status,
   }) {
     final (label, bg, fg) = switch (status) {
-      'cancelled' => ('Đã hủy', const Color(0xFFFDEDEC), const Color(0xFFC0392B)),
+      'cancelled' => (
+        'Đã hủy',
+        const Color(0xFFFDEDEC),
+        const Color(0xFFC0392B),
+      ),
       _ when isInProgress => (
         'Đang diễn ra',
         const Color(0xFFE8F8F5),
-        const Color(0xFF27AE60)
+        const Color(0xFF27AE60),
       ),
       _ when isPast || status == 'completed' => (
         'Hoàn thành',
         const Color(0xFFF2F4F4),
-        const Color(0xFF7F8C8D)
+        const Color(0xFF7F8C8D),
       ),
       _ => ('Sắp tới', const Color(0xFFEBF5FB), const Color(0xFF2980B9)),
     };
@@ -1145,10 +1174,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             Container(
               width: 6,
               height: 6,
-              decoration: BoxDecoration(
-                color: fg,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
             ),
             const SizedBox(width: 5),
           ],

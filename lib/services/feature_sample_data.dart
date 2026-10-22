@@ -25,14 +25,15 @@ Future<bool> installFeatureSamples(
   bool onlyForDemoAccounts = false,
 }) async {
   final now = (referenceTime ?? DateTime.now()).toUtc();
-  final local = now.add(const Duration(hours: 7));
+  final local = now.toLocal();
   final today = DateTime.utc(local.year, local.month, local.day);
   final historyEnd = today.subtract(const Duration(days: 2));
   final historyStart = historyEnd.subtract(const Duration(days: 6));
   final openStart = historyEnd.add(const Duration(days: 1));
   final openEnd = openStart.add(const Duration(days: 29));
   // Các ngày ở trên là ngày lịch Việt Nam; chuyển về UTC khi tạo ca.
-  DateTime at(DateTime day, int hour) => day.add(Duration(hours: hour - 7));
+  DateTime at(DateTime day, int hour) =>
+      DateTime(day.year, day.month, day.day, hour).toUtc();
   return db.transaction((tx) async {
     if ((await tx.query(
       'audit_logs',
@@ -106,10 +107,10 @@ Future<bool> installFeatureSamples(
     }
     final templates = <String, int>{};
     for (final t in [
-      ('MORNING', 'Ca sáng DEMO', '08:00', '16:00', 0, 30),
-      ('EVENING', 'Ca chiều DEMO', '17:00', '21:00', 0, 15),
-      ('SHORT', 'Ca ngắn DEMO', '21:30', '23:00', 0, 0),
-      ('NIGHT', 'Ca qua đêm DEMO', '22:00', '06:00', 1, 30),
+      ('MORNING', 'Ca sáng', '08:00', '16:00', 0, 30),
+      ('EVENING', 'Ca chiều', '17:00', '21:00', 0, 15),
+      ('SHORT', 'Ca ngắn', '21:30', '23:00', 0, 0),
+      ('NIGHT', 'Ca qua đêm', '22:00', '06:00', 1, 30),
     ]) {
       templates[t.$1] = await tx.insert('shift_templates', {
         'code': 'DEMO_${t.$1}',
@@ -202,7 +203,8 @@ Future<bool> installFeatureSamples(
         'required_staff': staff.length + extraCapacity,
         'status': status,
         'created_by': manager,
-        'note': '[DEMO $code] Dữ liệu mẫu để thử chức năng; giờ Việt Nam.',
+        'note':
+            'Phân công cho: ${staff.map((name) => people[name]!['full_name']).join(', ')}',
       });
       for (final name in staff) {
         assignments['$code/$name'] = await tx.insert('shift_assignments', {
@@ -549,7 +551,7 @@ Future<bool> installFeatureSamples(
       });
       for (final person in people.entries) {
         final rows = await tx.rawQuery(
-          "SELECT r.* FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND date(s.starts_at,'+7 hours') BETWEEN ? AND ?",
+          "SELECT r.* FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND date(s.starts_at,'localtime') BETWEEN ? AND ?",
           [person.value['id'], _date(period.$2), _date(period.$3)],
         );
         var regular = 0, ot = 0;

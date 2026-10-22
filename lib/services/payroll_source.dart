@@ -28,7 +28,7 @@ Future<String> payrollSourceHash(
     orderBy: 'id',
   );
   final records = await tx.rawQuery(
-    "SELECT r.*,a.employee_id,s.starts_at,s.ends_at FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND r.check_out_at IS NOT NULL AND date(s.starts_at,'+7 hours') BETWEEN ? AND ? ORDER BY r.id",
+    "SELECT r.*,a.employee_id,s.starts_at,s.ends_at FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND r.check_out_at IS NOT NULL AND date(s.starts_at,'localtime') BETWEEN ? AND ? ORDER BY r.id",
     [employeeId, p['starts_on'], p['ends_on']],
   );
   final items = await tx.rawQuery(

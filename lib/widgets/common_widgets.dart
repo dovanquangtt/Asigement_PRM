@@ -188,6 +188,11 @@ class BrandMark extends StatelessWidget {
       color: green,
       borderRadius: BorderRadius.circular(13),
     ),
-    child: const Icon(Icons.spa_rounded, color: lime, size: 23),
+    clipBehavior: Clip.antiAlias,
+    child: Image.asset(
+      'assets/branding/anh_em_quan.jpg',
+      fit: BoxFit.cover,
+      semanticLabel: 'Logo ANH EM QUÁN',
+    ),
   );
 }

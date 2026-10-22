@@ -343,8 +343,10 @@ extension WorkforceOperations on WorkforceRepository {
   Future<List<RowData>> devices() async {
     final db = await _open();
     await _require(db, 'attendance.review');
+    final scope = await _attendanceScope(db);
     return db.rawQuery(
-      'SELECT d.*,e.full_name FROM employee_devices d JOIN employees e ON e.id=d.employee_id ORDER BY d.id DESC',
+      'SELECT d.*,e.full_name FROM employee_devices d JOIN employees e ON e.id=d.employee_id ${scope == null ? '' : 'WHERE e.branch_id=?'} ORDER BY d.id DESC',
+      scope == null ? [] : [scope],
     );
   }
 
@@ -358,6 +360,12 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [deviceId],
       )).firstOrNull;
       if (d == null) throw const AuthException('Không tìm thấy thiết bị.');
+      final employee = (await tx.query(
+        'employees',
+        where: 'id=?',
+        whereArgs: [d['employee_id']],
+      )).single;
+      await _requireAttendanceBranch(tx, employee['branch_id'] as int);
       final own = await tx.query(
         'employees',
         where: 'id=? AND user_id=?',
@@ -396,8 +404,11 @@ extension WorkforceOperations on WorkforceRepository {
     required int radius,
     required String ssid,
     required String bssid,
+    bool? requireOvertimeApproval,
   }) async {
-    if (latitude.abs() > 90 ||
+    if (!latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
         longitude.abs() > 180 ||
         radius <= 0 ||
         ssid.trim().isEmpty ||
@@ -409,12 +420,20 @@ extension WorkforceOperations on WorkforceRepository {
     final db = await _open();
     await db.transaction((tx) async {
       await _require(tx, 'employees.manage');
+      await _requireAttendanceBranch(tx, branchId);
+      if (requireOvertimeApproval != null && !await _attendanceIsAdmin(tx)) {
+        throw const AuthException(
+          'Chỉ Admin được thay đổi chính sách tăng ca.',
+        );
+      }
       await tx.update(
         'branches',
         {
           'latitude': latitude,
           'longitude': longitude,
           'geofence_radius_m': radius,
+          if (requireOvertimeApproval != null)
+            'require_overtime_approval': requireOvertimeApproval ? 1 : 0,
         },
         where: 'id=?',
         whereArgs: [branchId],
@@ -426,6 +445,129 @@ extension WorkforceOperations on WorkforceRepository {
         'is_active': 1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
+  }
+
+  /// Read-only preflight; final confirmation validates again in its transaction.
+  Future<RowData> inspectAttendance(
+    int assignmentId,
+    AttendanceEvidence evidence, {
+    DateTime? now,
+  }) async {
+    final context = await attendanceContext(assignmentId);
+    final db = await _open();
+    final me = await _me(db);
+    return _validateAttendanceEvidence(
+      db,
+      context,
+      me['id'] as int,
+      evidence,
+      (now ?? DateTime.now()).toUtc(),
+    );
+  }
+
+  Future<RowData> _validateAttendanceEvidence(
+    DatabaseExecutor tx,
+    RowData s,
+    int employeeId,
+    AttendanceEvidence evidence,
+    DateTime clock,
+  ) async {
+    final ds = await tx.query(
+      'employee_devices',
+      where: 'device_identifier=? AND employee_id=? AND revoked_at IS NULL AND approved_by IS NOT NULL',
+      whereArgs: [evidence.deviceIdentifier, employeeId],
+    );
+    final deviceValid = ds.isNotEmpty;
+    final registrations = await tx.query(
+      'employee_devices',
+      where: 'device_identifier=?',
+      whereArgs: [evidence.deviceIdentifier],
+    );
+    final registration = registrations.firstOrNull;
+    final deviceStatus = registration == null
+        ? 'unregistered'
+        : registration['employee_id'] != employeeId
+        ? 'another_employee'
+        : registration['revoked_at'] != null
+        ? 'revoked'
+        : registration['approved_by'] == null
+        ? 'pending'
+        : 'approved';
+    var gpsValid = false;
+    double? distanceMeters;
+    if (s['latitude'] != null &&
+        s['longitude'] != null &&
+        evidence.latitude != null &&
+        evidence.longitude != null &&
+        evidence.accuracy != null &&
+        evidence.latitude!.isFinite &&
+        evidence.latitude!.abs() <= 90 &&
+        evidence.longitude!.isFinite &&
+        evidence.longitude!.abs() <= 180 &&
+        evidence.accuracy!.isFinite &&
+        !evidence.mocked) {
+      final lat1 = (s['latitude'] as num).toDouble() * math.pi / 180;
+      final lat2 = evidence.latitude! * math.pi / 180;
+      final dl = lat2 - lat1;
+      final dn =
+          (evidence.longitude! - (s['longitude'] as num)) * math.pi / 180;
+      final a =
+          math.pow(math.sin(dl / 2), 2) +
+          math.cos(lat1) * math.cos(lat2) * math.pow(math.sin(dn / 2), 2);
+      final distance =
+          6371000 *
+          2 *
+          math.atan2(
+            math.sqrt(a.toDouble().clamp(0, 1)),
+            math.sqrt((1 - a).toDouble().clamp(0, 1)),
+          );
+      distanceMeters = distance;
+      gpsValid =
+          distance <= (s['geofence_radius_m'] as int) &&
+          evidence.accuracy! >= 0 &&
+          evidence.accuracy! <= math.min(100, s['geofence_radius_m'] as int);
+    }
+    final wifi = evidence.bssid == null || evidence.ssid == null
+        ? <RowData>[]
+        : await tx.query(
+            'branch_wifi',
+            where: 'branch_id=? AND lower(bssid)=? AND ssid=? AND is_active=1',
+            whereArgs: [
+              s['branch_id'],
+              evidence.bssid?.toLowerCase(),
+              evidence.ssid,
+            ],
+          );
+    final wifiValid = wifi.isNotEmpty;
+    final failures = [
+      if (s['require_registered_device'] == 1 && !deviceValid)
+        'Thiết bị chưa được quản lý duyệt',
+      if (s['require_gps'] == 1 && !gpsValid)
+        'GPS ngoài phạm vi, thiếu chính xác hoặc vị trí giả',
+      if (s['require_wifi'] == 1 && !wifiValid) 'Wi-Fi không đúng chi nhánh',
+      if (clock.difference(evidence.collectedAt.toUtc()).abs() >
+          const Duration(minutes: 2))
+        'Dữ liệu xác thực đã quá hạn',
+    ];
+    final accepted = failures.isEmpty;
+    return {
+      'accepted': accepted,
+      'device_valid': deviceValid,
+      'device_status': deviceStatus,
+      'registration_id': registration?['id'],
+      'gps_valid': gpsValid,
+      'wifi_valid': wifiValid,
+      'device_ok': s['require_registered_device'] != 1 || deviceValid,
+      'gps_ok': s['require_gps'] != 1 || gpsValid,
+      'wifi_ok': s['require_wifi'] != 1 || wifiValid,
+      'fresh':
+          clock.difference(evidence.collectedAt.toUtc()).abs() <=
+          const Duration(minutes: 2),
+      'device_id': ds.firstOrNull?['id'],
+      'distance_m': distanceMeters,
+      'radius_m': s['geofence_radius_m'],
+      'failures': failures,
+    };
   }
 
   /// Đối chiếu chủ ca, thiết bị đã duyệt, GPS, Wi-Fi và độ mới bằng chứng.
@@ -476,65 +618,23 @@ extension WorkforceOperations on WorkforceRepository {
           'Ngoài khoảng giờ cho phép điểm danh ca này.',
         );
       }
-      final ds = await tx.query(
-        'employee_devices',
-        where: 'device_identifier=? AND employee_id=? AND revoked_at IS NULL AND approved_by IS NOT NULL',
-        whereArgs: [evidence.deviceIdentifier, me['id']],
+      final checks = await _validateAttendanceEvidence(
+        tx,
+        s,
+        me['id'] as int,
+        evidence,
+        clock,
       );
-      final deviceValid = ds.isNotEmpty;
-      var gpsValid = false;
-      if (s['latitude'] != null &&
-          s['longitude'] != null &&
-          evidence.latitude != null &&
-          evidence.longitude != null &&
-          evidence.accuracy != null &&
-          !evidence.mocked) {
-        final lat1 = (s['latitude'] as num).toDouble() * math.pi / 180;
-        final lat2 = evidence.latitude! * math.pi / 180;
-        final dl = lat2 - lat1;
-        final dn =
-            (evidence.longitude! - (s['longitude'] as num)) * math.pi / 180;
-        final a =
-            math.pow(math.sin(dl / 2), 2) +
-            math.cos(lat1) * math.cos(lat2) * math.pow(math.sin(dn / 2), 2);
-        final distance =
-            6371000 *
-            2 *
-            math.atan2(
-              math.sqrt(a.toDouble().clamp(0, 1)),
-              math.sqrt((1 - a).toDouble().clamp(0, 1)),
-            );
-        gpsValid =
-            distance <= (s['geofence_radius_m'] as int) &&
-            evidence.accuracy! >= 0 &&
-            evidence.accuracy! <= math.min(100, s['geofence_radius_m'] as int);
-      }
-      final wifi = await tx.query(
-        'branch_wifi',
-        where: 'branch_id=? AND lower(bssid)=? AND ssid=? AND is_active=1',
-        whereArgs: [
-          s['branch_id'],
-          evidence.bssid?.toLowerCase(),
-          evidence.ssid,
-        ],
-      );
-      final wifiValid = wifi.isNotEmpty;
-      final failures = [
-        if (s['require_registered_device'] == 1 && !deviceValid)
-          'Thiết bị chưa được quản lý duyệt',
-        if (s['require_gps'] == 1 && !gpsValid)
-          'GPS ngoài phạm vi, thiếu chính xác hoặc vị trí giả',
-        if (s['require_wifi'] == 1 && !wifiValid) 'Wi-Fi không đúng chi nhánh',
-        if (clock.difference(evidence.collectedAt.toUtc()).abs() >
-            const Duration(minutes: 2))
-          'Dữ liệu xác thực đã quá hạn',
-      ];
-      final accepted = failures.isEmpty;
+      final deviceValid = checks['device_valid'] == true;
+      final gpsValid = checks['gps_valid'] == true;
+      final wifiValid = checks['wifi_valid'] == true;
+      final accepted = checks['accepted'] == true;
+      final failures = checks['failures'] as List<String>;
       final eventId = await tx.insert('attendance_events', {
         'assignment_id': assignmentId,
         'event_type': type,
         'occurred_at': sqlTime(clock),
-        'device_id': ds.firstOrNull?['id'],
+        'device_id': checks['device_id'],
         'latitude': evidence.latitude,
         'longitude': evidence.longitude,
         'gps_accuracy_m': evidence.accuracy,
@@ -548,51 +648,7 @@ extension WorkforceOperations on WorkforceRepository {
         'confirmed_at': accepted ? sqlTime(clock) : null,
       });
       if (accepted) {
-        if (type == 'check_in') {
-          final late = math.max(
-            0,
-            clock.difference(start).inMinutes -
-                (s['late_grace_minutes'] as int),
-          );
-          await tx.insert('attendance_records', {
-            'assignment_id': assignmentId,
-            'check_in_at': sqlTime(clock),
-            'late_minutes': late,
-            'status': 'present',
-          });
-          await tx.update(
-            'shifts',
-            {'status': 'in_progress'},
-            where: 'id=?',
-            whereArgs: [s['id']],
-          );
-        } else {
-          final record = (await tx.query(
-            'attendance_records',
-            where: 'assignment_id=?',
-            whereArgs: [assignmentId],
-          )).single;
-          final inAt = utcTime(record['check_in_at']);
-          if (clock.isBefore(inAt)) {
-            throw const AuthException('Giờ ra ca trước giờ vào ca.');
-          }
-          final worked = math.max(
-            0,
-            clock.difference(inAt).inMinutes - (s['break_minutes'] as int),
-          );
-          final planned =
-              end.difference(start).inMinutes - (s['break_minutes'] as int);
-          await tx.update(
-            'attendance_records',
-            {
-              'check_out_at': sqlTime(clock),
-              'worked_minutes': worked,
-              'overtime_minutes': math.max(0, worked - planned),
-            },
-            where: 'id=?',
-            whereArgs: [record['id']],
-          );
-        }
+        await _applyAttendanceRecord(tx, s, assignmentId, type, clock);
       }
       return {
         'id': eventId,
@@ -604,13 +660,94 @@ extension WorkforceOperations on WorkforceRepository {
     });
   }
 
+  Future<void> _applyAttendanceRecord(
+    DatabaseExecutor tx,
+    RowData s,
+    int assignmentId,
+    String type,
+    DateTime clock,
+  ) async {
+    await _ensureAttendanceEditable(tx, assignmentId);
+    final start = utcTime(s['starts_at']);
+    final end = utcTime(s['ends_at']);
+    if (type == 'check_in') {
+      final late = math.max(
+        0,
+        clock.difference(start).inMinutes - (s['late_grace_minutes'] as int),
+      );
+      final current = (await tx.query(
+        'attendance_records',
+        where: 'assignment_id=?',
+        whereArgs: [assignmentId],
+      )).firstOrNull;
+      final values = <String, Object?>{
+        'assignment_id': assignmentId,
+        'check_in_at': sqlTime(clock),
+        'late_minutes': late,
+        'status': 'present',
+      };
+      if (current == null) {
+        await tx.insert('attendance_records', values);
+      } else {
+        await tx.update(
+          'attendance_records',
+          values,
+          where: 'id=?',
+          whereArgs: [current['id']],
+        );
+      }
+      await tx.update(
+        'shifts',
+        {'status': 'in_progress'},
+        where: 'id=?',
+        whereArgs: [s['id']],
+      );
+    } else {
+      final record = (await tx.query(
+        'attendance_records',
+        where: 'assignment_id=?',
+        whereArgs: [assignmentId],
+      )).single;
+      final inAt = utcTime(record['check_in_at']);
+      if (clock.isBefore(inAt)) {
+        throw const AuthException('Giờ ra ca trước giờ vào ca.');
+      }
+      final worked = math.max(
+        0,
+        clock.difference(inAt).inMinutes - (s['break_minutes'] as int),
+      );
+      final planned =
+          end.difference(start).inMinutes - (s['break_minutes'] as int);
+      await tx.update(
+        'attendance_records',
+        {
+          'check_out_at': sqlTime(clock),
+          'worked_minutes': worked,
+          'overtime_minutes': math.max(0, worked - planned),
+        },
+        where: 'id=?',
+        whereArgs: [record['id']],
+      );
+    }
+    await _refreshAttendanceMetrics(tx, assignmentId);
+  }
+
   Future<List<RowData>> attendanceHistory() async {
     final db = await _open();
     final managing = await _can(db, 'attendance.review');
+    final scope = managing ? await _attendanceScope(db) : null;
     if (!managing) await _require(db, 'attendance.self');
     return db.rawQuery(
-      'SELECT ev.*,e.full_name FROM attendance_events ev JOIN shift_assignments a ON a.id=ev.assignment_id JOIN employees e ON e.id=a.employee_id ${managing ? '' : 'WHERE e.user_id=? '}ORDER BY ev.occurred_at DESC',
-      managing ? [] : [session.userId],
+      'SELECT ev.*,COALESCE(sender.full_name,e.full_name) full_name FROM attendance_events ev JOIN shift_assignments a ON a.id=ev.assignment_id JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id LEFT JOIN employees sender ON sender.user_id=ev.submitted_by ${managing
+          ? scope == null
+                ? ''
+                : 'WHERE s.branch_id=? '
+          : 'WHERE ev.submitted_by=? OR (ev.submitted_by IS NULL AND e.user_id=?) '}ORDER BY ev.occurred_at DESC',
+      managing
+          ? scope == null
+                ? []
+                : [scope]
+          : [session.userId, session.userId],
     );
   }
 
@@ -1018,15 +1155,21 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
           throw const AuthException('Không được sửa phiếu lương đã chốt.');
         }
         final records = await tx.rawQuery(
-          "SELECT r.* FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND r.check_out_at IS NOT NULL AND date(s.starts_at,'+7 hours') BETWEEN ? AND ?",
+          "SELECT r.* FROM attendance_records r JOIN shift_assignments a ON a.id=r.assignment_id JOIN shifts s ON s.id=a.shift_id WHERE a.employee_id=? AND r.status IN ('present','adjusted') AND r.check_out_at IS NOT NULL AND date(s.starts_at,'localtime') BETWEEN ? AND ?",
           [e['id'], p['starts_on'], p['ends_on']],
         );
         var regular = 0;
         var overtime = 0;
         for (final r in records) {
           overtime += r['overtime_minutes'] as int;
+          final unpaidExtra =
+              ['PENDING', 'REJECTED'].contains(r['overtime_status'])
+              ? r['overtime_requested_minutes'] as int
+              : 0;
           regular +=
-              (r['worked_minutes'] as int) - (r['overtime_minutes'] as int);
+              (r['worked_minutes'] as int) -
+              (r['overtime_minutes'] as int) -
+              unpaidExtra;
         }
         final perMinute = c['salary_basis'] == 'hourly'
             ? (c['hourly_rate_vnd'] as int) / 60
