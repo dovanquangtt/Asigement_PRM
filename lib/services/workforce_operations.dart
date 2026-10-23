@@ -51,6 +51,158 @@ extension WorkforceOperations on WorkforceRepository {
     );
   }
 
+  Future<List<RowData>> managerShiftOverview({int? branchId}) async {
+    final db = await _open();
+    await _require(db, 'shifts.manage');
+    return db.rawQuery(
+      '''
+      SELECT s.*, b.name AS branch_name,
+        COUNT(a.id) AS assigned_count,
+        COALESCE(GROUP_CONCAT(e.full_name, ', '), '') AS assigned_staff_names
+      FROM shifts s
+      JOIN branches b ON b.id=s.branch_id
+      LEFT JOIN shift_assignments a ON a.shift_id=s.id AND a.status<>'cancelled'
+      LEFT JOIN employees e ON e.id=a.employee_id
+      ${branchId == null ? '' : 'WHERE s.branch_id=?'}
+      GROUP BY s.id
+      ORDER BY s.starts_at DESC, s.id DESC
+    ''',
+      branchId == null ? [] : [branchId],
+    );
+  }
+
+  Future<List<RowData>> eligibleEmployeesForShift(int shiftId) async {
+    final db = await _open();
+    return db.transaction((tx) async {
+      await _require(tx, 'shifts.manage');
+      final shift = (await tx.query(
+        'shifts',
+        where: 'id=?',
+        whereArgs: [shiftId],
+      )).firstOrNull;
+      if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      final employees = await tx.query(
+        'employees',
+        where: "branch_id=? AND status='active'",
+        whereArgs: [shift['branch_id']],
+        orderBy: 'full_name, id',
+      );
+      final assigned = await tx.query(
+        'shift_assignments',
+        where: "shift_id=? AND status<>'cancelled'",
+        whereArgs: [shiftId],
+      );
+      final assignedIds = assigned.map((a) => a['employee_id']).toSet();
+      final result = <RowData>[];
+      for (final employee in employees) {
+        final alreadyAssigned = assignedIds.contains(employee['id']);
+        String? reason;
+        if (alreadyAssigned) {
+          reason = 'Đã phân vào ca này';
+        } else {
+          try {
+            await _available(tx, employee['id'] as int, shift);
+            if (assigned.length >= (shift['required_staff'] as int)) {
+              reason = 'Ca đã đủ nhân viên.';
+            }
+          } on AuthException catch (e) {
+            reason = e.message;
+          }
+        }
+        result.add({
+          ...employee,
+          'is_available': reason == null,
+          'is_already_assigned': alreadyAssigned,
+          'conflict_reason': reason,
+        });
+      }
+      return result;
+    });
+  }
+
+  Future<void> unassignShift(int shiftId, int employeeId) async {
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'shifts.manage');
+      final shift = (await tx.query(
+        'shifts',
+        where: 'id=?',
+        whereArgs: [shiftId],
+      )).firstOrNull;
+      if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      if (shift['status'] != 'scheduled') {
+        throw const AuthException('Chỉ được bỏ phân công ca chưa bắt đầu.');
+      }
+      final assignment = (await tx.query(
+        'shift_assignments',
+        where: "shift_id=? AND employee_id=? AND status='assigned'",
+        whereArgs: [shiftId, employeeId],
+      )).firstOrNull;
+      if (assignment == null) {
+        throw const AuthException('Không tìm thấy phân công đang hoạt động.');
+      }
+      final id = assignment['id'] as int;
+      if ((await tx.query(
+        'attendance_events',
+        where: 'assignment_id=?',
+        whereArgs: [id],
+        limit: 1,
+      )).isNotEmpty) {
+        throw const AuthException('Không thể bỏ phân công đã có chấm công.');
+      }
+      await tx.update(
+        'shift_assignments',
+        {'status': 'cancelled'},
+        where: 'id=?',
+        whereArgs: [id],
+      );
+      await _audit(tx, 'shift.unassign', 'shift_assignments', id);
+    });
+  }
+
+  Future<void> cancelShift(int shiftId) async {
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'shifts.manage');
+      final shift = (await tx.query(
+        'shifts',
+        where: 'id=?',
+        whereArgs: [shiftId],
+      )).firstOrNull;
+      if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      if (shift['status'] == 'cancelled') return;
+      if (shift['status'] != 'scheduled') {
+        throw const AuthException('Chỉ được hủy ca chưa bắt đầu.');
+      }
+      if ((await tx.rawQuery(
+        '''
+        SELECT a.id FROM shift_assignments a
+        WHERE a.shift_id=? AND (a.status='completed' OR EXISTS (
+          SELECT 1 FROM attendance_events ev WHERE ev.assignment_id=a.id
+        ) OR EXISTS (
+          SELECT 1 FROM attendance_records r WHERE r.assignment_id=a.id
+        )) LIMIT 1
+      ''',
+        [shiftId],
+      )).isNotEmpty) {
+        throw const AuthException('Không thể hủy ca đã có chấm công.');
+      }
+      await tx.update(
+        'shift_assignments',
+        {'status': 'cancelled'},
+        where: "shift_id=? AND status='assigned'",
+        whereArgs: [shiftId],
+      );
+      await tx.update(
+        'shifts',
+        {'status': 'cancelled'},
+        where: 'id=?',
+        whereArgs: [shiftId],
+      );
+      await _audit(tx, 'shift.cancel', 'shifts', shiftId);
+    });
+  }
+
   Future<int> createShift({
     required int branchId,
     required DateTime start,
