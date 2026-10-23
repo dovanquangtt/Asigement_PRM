@@ -146,6 +146,20 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
                       style: TextStyle(color: Colors.white70, fontSize: 11),
                     ),
                   ],
+                  if (latest['status'] == 'approved') ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Phiếu đã được duyệt; trạng thái này chưa xác nhận tiền đã được chuyển.',
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                  ],
+                  if (latest['status'] == 'paid') ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Đơn vị đã ghi nhận phiếu này là đã thanh toán.',
+                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   OutlinedButton.icon(
                     onPressed: () => widget.onOpen(latest),

@@ -7,6 +7,122 @@ import 'database_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('Payroll approval and payment are separate and payment is tracked per employee', () async {
+    final f = await DatabaseFixture.open(keepSampleUsers: true);
+    try {
+      await installFeatureSamples(f.db);
+      Future<WorkforceRepository> repo(String user, String password) async =>
+          WorkforceRepository(
+            await f.auth.signIn(user, password),
+            openDatabase: () async => f.db,
+          );
+      final admin = await repo('admin', 'Admin@12345');
+      final manager = await repo('manager', 'Manager@12345');
+      final employee = await repo('employee', 'Employee@12345');
+      final period =
+          (await f.db.query(
+                'payroll_periods',
+                where: "code='DEMO_OPEN'",
+              )).single['id']
+              as int;
+
+      await manager.calculatePay(period);
+      await manager.approvePayroll(period);
+      final payslips = await f.db.query(
+        'payslips',
+        where: 'period_id=?',
+        whereArgs: [period],
+        orderBy: 'employee_id',
+      );
+      expect(payslips.every((pay) => pay['status'] == 'approved'), isTrue);
+      expect(
+        (await f.db.query(
+          'payroll_periods',
+          where: 'id=?',
+          whereArgs: [period],
+        )).single['status'],
+        'approved',
+      );
+      expect(
+        (await employee.notifications()).where(
+          (message) => message['related_entity'] == 'payslips',
+        ),
+        isEmpty,
+      );
+
+      final employeeId =
+          (await f.db.rawQuery(
+                "SELECT e.id FROM employees e JOIN users u ON u.id=e.user_id WHERE u.username='employee'",
+              )).single['id']
+              as int;
+      final employeePayslip = payslips.singleWhere(
+        (pay) => pay['employee_id'] == employeeId,
+      );
+      await admin.confirmPayslipPaid(employeePayslip['id'] as int);
+
+      expect(
+        (await f.db.query(
+          'payslips',
+          where: 'id=?',
+          whereArgs: [employeePayslip['id']],
+        )).single['status'],
+        'paid',
+      );
+      expect(
+        (await employee.notifications()).singleWhere(
+          (message) =>
+              message['related_entity'] == 'payslips' &&
+              message['related_id'] == employeePayslip['id'],
+        )['title'],
+        'Lương đã được xác nhận thanh toán',
+      );
+      expect(
+        (await f.db.query(
+          'payroll_periods',
+          where: 'id=?',
+          whereArgs: [period],
+        )).single['status'],
+        'approved',
+      );
+      await expectLater(
+        employee.confirmPayslipPaid(employeePayslip['id'] as int),
+        throwsA(isA<AuthException>()),
+      );
+      await expectLater(
+        admin.confirmPayslipPaid(employeePayslip['id'] as int),
+        throwsA(isA<AuthException>()),
+      );
+
+      final unpaid = payslips
+          .where((pay) => pay['id'] != employeePayslip['id'])
+          .toList();
+      for (final pay in unpaid) {
+        await manager.confirmPayslipPaid(pay['id'] as int);
+      }
+      expect(
+        (await f.db.query(
+          'payroll_periods',
+          where: 'id=?',
+          whereArgs: [period],
+        )).single['status'],
+        'paid',
+      );
+      expect(
+        (await admin.periodPayslips(period))
+            .where((pay) => pay['status'] == 'paid'),
+        hasLength(payslips.length),
+      );
+      expect(
+        (await f.db.query(
+          'audit_logs',
+          where: "action='payroll.payment_confirmed'",
+        )),
+        hasLength(payslips.length),
+      );
+    } finally {
+      await f.dispose();
+    }
+  });
   test(
     'Payroll approval and device review notify only affected employee',
     () async {

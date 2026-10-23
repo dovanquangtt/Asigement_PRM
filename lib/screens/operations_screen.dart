@@ -589,9 +589,18 @@ class _OperationsPageState extends State<OperationsPage> {
         return Column(
           children: [
             ListTile(
-              title: Text('${row['code']} • ${row['status']}'),
+              title: Text(
+                '${row['code']} • ${switch (row['status']) {
+                  'calculating' => 'Đã tính, chờ duyệt',
+                  'approved' => 'Đã duyệt, chờ thanh toán',
+                  'paid' => 'Đã thanh toán đủ',
+                  _ => 'Bản nháp',
+                }}',
+              ),
               subtitle: Text(
-                '${row['starts_on']} — ${row['ends_on']}\nHệ số tăng ca: ${row['overtime_multiplier'] ?? 'Chưa cấu hình'}',
+                '${row['starts_on']} — ${row['ends_on']}\n'
+                'Hệ số tăng ca: ${row['overtime_multiplier'] ?? 'Chưa cấu hình'}'
+                '${(row['payslip_count'] as int? ?? 0) > 0 ? '\nPhiếu: ${row['paid_count']}/${row['payslip_count']} đã thanh toán' : ''}',
               ),
             ),
             Wrap(
@@ -634,6 +643,19 @@ class _OperationsPageState extends State<OperationsPage> {
                   button(
                     'Duyệt kỳ lương',
                     () => r.approvePayroll(row['id'] as int),
+                  ),
+                if ((row['payslip_count'] as int? ?? 0) > 0)
+                  TextButton(
+                    onPressed: () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => PayrollPeriodPayslipsPage(
+                          repository: r,
+                          period: row,
+                        ),
+                      ),
+                    ).then((_) => refresh()),
+                    child: const Text('Phiếu nhân viên & thanh toán'),
                   ),
                 if (!manager && locked)
                   const Padding(
@@ -785,6 +807,176 @@ class _OperationsPageState extends State<OperationsPage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: panel(child: tile(row)),
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+class PayrollPeriodPayslipsPage extends StatefulWidget {
+  const PayrollPeriodPayslipsPage({
+    super.key,
+    required this.repository,
+    required this.period,
+  });
+
+  final WorkforceRepository repository;
+  final RowData period;
+
+  @override
+  State<PayrollPeriodPayslipsPage> createState() =>
+      _PayrollPeriodPayslipsPageState();
+}
+
+class _PayrollPeriodPayslipsPageState extends State<PayrollPeriodPayslipsPage> {
+  late Future<List<RowData>> loading;
+
+  @override
+  void initState() {
+    super.initState();
+    loading = widget.repository.periodPayslips(widget.period['id'] as int);
+  }
+
+  String vnd(Object? value) {
+    final digits = (value as num?)?.toInt().toString() ?? '0';
+    return '${digits.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')} ₫';
+  }
+
+  String statusLabel(Object? status) => switch (status) {
+    'paid' => 'Đã thanh toán',
+    'approved' => 'Đã duyệt • chờ thanh toán',
+    _ => 'Bản nháp',
+  };
+
+  Future<void> openPayslip(RowData pay) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            PayDetailPage(repository: widget.repository, id: pay['id'] as int),
+      ),
+    );
+  }
+
+  Future<void> confirmPayment(RowData pay) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xác nhận đã trả lương'),
+        content: Text(
+          'Chỉ tiếp tục sau khi đã chuyển tiền thực tế cho ${pay['full_name']}.\n\n'
+          'Kỳ ${pay['period_code']} • ${vnd(pay['net_pay_vnd'])}\n\n'
+          'Nhân viên sẽ nhận thông báo xác nhận thanh toán.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Chưa chuyển'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Đã chuyển tiền'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.repository.confirmPayslipPaid(pay['id'] as int);
+      if (!mounted) return;
+      setState(() {
+        loading = widget.repository.periodPayslips(widget.period['id'] as int);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã ghi nhận thanh toán cho nhân viên.')),
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không ghi nhận được thanh toán.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text('Phiếu lương • ${widget.period['code']}')),
+    body: FutureBuilder<List<RowData>>(
+      future: loading,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(
+            child: Text('Không tải được danh sách phiếu lương.'),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final payslips = snapshot.data!;
+        final paid = payslips.where((pay) => pay['status'] == 'paid').length;
+        return RefreshIndicator(
+          onRefresh: () async {
+            final next = widget.repository.periodPayslips(
+              widget.period['id'] as int,
+            );
+            setState(() => loading = next);
+            await next;
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(18),
+            children: [
+              panel(
+                child: Text(
+                  'Kỳ ${widget.period['starts_on']} – ${widget.period['ends_on']}\n'
+                  '$paid/${payslips.length} phiếu đã được xác nhận thanh toán.\n'
+                  'Duyệt lương không tự chuyển tiền. Hãy xác nhận từng phiếu sau khi đã thanh toán thực tế.',
+                ),
+              ),
+              for (final pay in payslips)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: panel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${pay['full_name']}'),
+                          subtitle: Text(
+                            '${statusLabel(pay['status'])}\nThực lĩnh: ${vnd(pay['net_pay_vnd'])}'
+                            '${pay['paid_at'] == null ? '' : '\nThời điểm ghi nhận: ${pay['paid_at']}'}',
+                          ),
+                          isThreeLine: true,
+                        ),
+                        Wrap(
+                          children: [
+                            TextButton(
+                              onPressed: () => openPayslip(pay),
+                              child: const Text('Chi tiết phiếu'),
+                            ),
+                            if (pay['status'] == 'approved')
+                              FilledButton.tonal(
+                                onPressed: () => confirmPayment(pay),
+                                child: const Text('Xác nhận đã trả'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (payslips.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Kỳ lương chưa có phiếu nào.'),
                 ),
             ],
           ),

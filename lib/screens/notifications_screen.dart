@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/workforce_repository.dart';
 import 'attendance_management_screen.dart';
+import 'operations_screen.dart';
 import '../services/auth_service.dart';
 
 /// Hộp thông báo đọc trực tiếp từ SQLite của tài khoản đang đăng nhập.
@@ -88,6 +89,24 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             builder: (_) => AttendanceCaseScreen(
                               repository: widget.repository,
                               assignmentId: assignment,
+                            ),
+                          ),
+                        );
+                      } on AuthException catch (e) {
+                        if (mounted && context.mounted) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      }
+                    } else if (row['related_entity'] == 'payslips' &&
+                        row['related_id'] is int) {
+                      try {
+                        await Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => PayDetailPage(
+                              repository: widget.repository,
+                              id: row['related_id'] as int,
                             ),
                           ),
                         );

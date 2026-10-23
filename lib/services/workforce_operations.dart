@@ -54,8 +54,7 @@ extension WorkforceOperations on WorkforceRepository {
   Future<List<RowData>> managerShiftOverview({int? branchId}) async {
     final db = await _open();
     await _require(db, 'shifts.manage');
-    return db.rawQuery(
-      '''
+    return db.rawQuery('''
       SELECT s.*, b.name AS branch_name,
         COUNT(a.id) AS assigned_count,
         COALESCE(GROUP_CONCAT(e.full_name, ', '), '') AS assigned_staff_names
@@ -66,9 +65,7 @@ extension WorkforceOperations on WorkforceRepository {
       ${branchId == null ? '' : 'WHERE s.branch_id=?'}
       GROUP BY s.id
       ORDER BY s.starts_at DESC, s.id DESC
-    ''',
-      branchId == null ? [] : [branchId],
-    );
+    ''', branchId == null ? [] : [branchId]);
   }
 
   Future<List<RowData>> eligibleEmployeesForShift(int shiftId) async {
@@ -1160,7 +1157,23 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     final db = await _open();
     await _require(db, 'payslips.self');
     return db.rawQuery(
-      'SELECT p.*,pol.overtime_multiplier FROM payroll_periods p LEFT JOIN payroll_policies pol ON pol.period_id=p.id ORDER BY p.starts_on DESC',
+      'SELECT p.*,pol.overtime_multiplier,'
+      '(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id) AS payslip_count,'
+      "(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id AND s.status='approved') AS approved_count,"
+      "(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id AND s.status='paid') AS paid_count "
+      'FROM payroll_periods p LEFT JOIN payroll_policies pol ON pol.period_id=p.id ORDER BY p.starts_on DESC',
+    );
+  }
+
+  Future<List<RowData>> periodPayslips(int periodId) async {
+    final db = await _open();
+    await _require(db, 'payroll.manage');
+    return db.rawQuery(
+      'SELECT p.*,e.full_name,pp.code AS period_code,pp.starts_on,pp.ends_on '
+      'FROM v_payslip_totals p JOIN employees e ON e.id=p.employee_id '
+      'JOIN payroll_periods pp ON pp.id=p.period_id '
+      'WHERE p.period_id=? ORDER BY e.full_name',
+      [periodId],
     );
   }
 
@@ -1609,6 +1622,62 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
         where: 'id=?',
         whereArgs: [periodId],
       );
+    });
+  }
+
+  /// Records an actual payment made outside the app for one approved payslip.
+  Future<void> confirmPayslipPaid(int payslipId) async {
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'payroll.manage');
+      final rows = await tx.rawQuery(
+        'SELECT p.*,e.user_id,pp.code AS period_code '
+        'FROM payslips p JOIN employees e ON e.id=p.employee_id '
+        'JOIN payroll_periods pp ON pp.id=p.period_id WHERE p.id=?',
+        [payslipId],
+      );
+      if (rows.isEmpty) {
+        throw const AuthException('Không tìm thấy phiếu lương.');
+      }
+      final payslip = rows.single;
+      if (payslip['status'] != 'approved') {
+        throw const AuthException(
+          'Chỉ xác nhận thanh toán cho phiếu lương đã được duyệt.',
+        );
+      }
+      final paidAt = sqlTime(DateTime.now());
+      final changed = await tx.update(
+        'payslips',
+        {'status': 'paid', 'paid_at': paidAt},
+        where: "id=? AND status='approved'",
+        whereArgs: [payslipId],
+      );
+      if (changed != 1) {
+        throw const AuthException(
+          'Phiếu lương đã được cập nhật. Hãy tải lại danh sách.',
+        );
+      }
+      await tx.rawUpdate(
+        "UPDATE payroll_periods SET status='paid' WHERE id=? AND NOT EXISTS (SELECT 1 FROM payslips WHERE period_id=? AND status<>'paid')",
+        [payslip['period_id'], payslip['period_id']],
+      );
+      await _audit(tx, 'payroll.payment_confirmed', 'payslips', payslipId, {
+        'period_id': payslip['period_id'],
+        'employee_id': payslip['employee_id'],
+        'net_pay_vnd': payslip['net_pay_vnd'],
+        'paid_at': paidAt,
+      });
+      final userId = payslip['user_id'];
+      if (userId != null) {
+        await _notify(
+          tx,
+          [userId as int],
+          'Lương đã được xác nhận thanh toán',
+          'Phiếu lương kỳ ${payslip['period_code']} đã được ghi nhận thanh toán. Thực lĩnh: ${payslip['net_pay_vnd']} VND.',
+          'payslips',
+          payslipId,
+        );
+      }
     });
   }
 

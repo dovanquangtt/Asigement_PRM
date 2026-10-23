@@ -57,7 +57,7 @@ không được tự duyệt các mục mà hệ thống yêu cầu người kh�
 | Mã | Luồng và nghiệp vụ | Bảng chính |
 | --- | --- | --- |
 | M01 | Lịch ca → Chi tiết ca → Kiểm tra thiết bị & Điểm danh. Chọn thiết bị của mình, gửi bằng chứng GPS/Wi-Fi, Admin duyệt/từ chối và xem lịch sử | employee_devices, branches, branch_wifi, attendance_events, attendance_records |
-| M02 | Kỳ lương & 6 bước. Tạo kỳ/hệ số, hợp đồng, tính lương, điều chỉnh khoản cộng/trừ, tính lại và duyệt; nhân viên xem phiếu của mình | contracts, payroll_periods, payslips, payslip_items, payroll_calculation_steps, employee_payroll_checks |
+| M02 | Kỳ lương & 6 bước. Admin/Quản lý tạo kỳ, tính lương, điều chỉnh và duyệt; sau khi chuyển tiền thực tế, xác nhận thanh toán theo từng nhân viên. Nhân viên nhận thông báo riêng khi duyệt và khi xác nhận đã trả | contracts, payroll_periods, payslips, payslip_items, payroll_calculation_steps, employee_payroll_checks |
 | M03 | Xem lịch, chi tiết ca theo giờ Việt Nam, chi nhánh, trạng thái, ghi chú và nhân viên cùng ca | shifts, shift_assignments, v_shift_roster |
 | M04 | Tạo ca/phân nhân viên; kiểm tra chi nhánh, trạng thái nhân sự, trùng giờ, sức chứa và nghỉ phép đã duyệt | shifts, shift_assignments, employees, leave_requests |
 | M05 | Yêu cầu đổi ca → người nhận đồng ý → Admin/Quản lý không tham gia ca duyệt; cập nhật hai phân ca trong cùng transaction | shift_swap_requests, shift_assignments |
@@ -79,7 +79,13 @@ không được tự duyệt các mục mà hệ thống yêu cầu người kh�
    cảm biến sau hộp thoại gửi, lưu cả thiết bị được chọn và thiết bị thực tế. Đi muộn không cần duyệt riêng; chỉ ngoại lệ mới chờ xử lý.
 6. Chụp ảnh thật, nhập ghi chú đóng ca và gửi quản lý duyệt.
 7. Thêm hợp đồng có ngày hiệu lực, lương và phút chuẩn; tạo kỳ lương, tính,
-   xem sáu bước, thêm điều chỉnh nếu cần, tính lại rồi duyệt.
+   xem sáu bước, thêm điều chỉnh nếu cần, tính lại rồi duyệt. Admin và Quản lý
+   cùng thao tác trên kỳ lương; mỗi kỳ sinh một phiếu cho từng nhân viên.
+   Duyệt chỉ chốt số liệu và gửi thông báo “Bảng lương đã được duyệt”, không
+   xác nhận tiền đã chuyển. Sau khi thanh toán thực tế, mở **Phiếu nhân viên &
+   thanh toán** trong kỳ, xem chi tiết và xác nhận từng phiếu. Nhân viên nhận
+   thông báo thanh toán và có thể mở phiếu từ thông báo. Kỳ chỉ chuyển sang
+   “Đã thanh toán đủ” khi tất cả phiếu của kỳ đã được xác nhận.
 
 ### Quy tắc chấm công và xử lý ngoại lệ
 
@@ -236,6 +242,9 @@ bị, đổi ca, lương, thông báo, migration và bố cục điện thoại.
 
 - **Chưa có đồng bộ giữa thiết bị.** Tài khoản, Gmail, duyệt thiết bị và dữ liệu
   nghiệp vụ phải nằm trong cùng database cục bộ khi thử luồng nhiều vai trò.
+- Xác nhận thanh toán là ghi nhận thủ công sau khi chuyển tiền ngoài ứng dụng;
+  ứng dụng chưa kết nối ngân hàng và không tự xác minh giao dịch. Admin/Quản lý
+  phải dùng chung database cục bộ để trạng thái và thông báo xuất hiện với nhân viên.
 - GPS/Wi-Fi/camera cần kiểm thử thực tế trên điện thoại tại chi nhánh.
   Máy ảo không thay thế kiểm thử cảm biến thật; vị trí giả có thể bị từ chối.
 - Thiếu quyền, tắt dịch vụ vị trí, không đọc được BSSID hoặc cấu hình chi nhánh
