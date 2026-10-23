@@ -1279,6 +1279,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
       }
       final now = sqlTime(DateTime.now());
       var total = 0;
+      int? employeePayslipId;
       const names = [
         'Kiểm tra kỳ lương và hồ sơ',
         'Kiểm tra hợp đồng và đơn giá',
@@ -1347,6 +1348,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
         if (existing != null) {
           await tx.update('payslips', values, where: 'id=?', whereArgs: [id]);
         }
+        if (!managing) employeePayslipId = id;
         final totals = (await tx.query(
           'v_payslip_totals',
           where: 'id=?',
@@ -1408,6 +1410,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
         'net': total,
         'message':
             'Đã hoàn tất 6 bước và lưu ${employees.length} phiếu lương nháp.',
+        if (!managing) 'payslip_id': employeePayslipId,
       };
     });
   }
@@ -1416,27 +1419,50 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     final db = await _open();
     final managing = await _can(db, 'payroll.manage');
     if (!managing) await _require(db, 'payslips.self');
-    final rows = await db.rawQuery(
-      'SELECT p.*,e.full_name FROM v_payslip_totals p JOIN employees e ON e.id=p.employee_id WHERE p.id=? ${managing ? '' : 'AND e.user_id=?'}',
-      managing ? [id] : [id, session.userId],
-    );
-    if (rows.isEmpty) {
-      throw const AuthException('Không có quyền xem phiếu lương này.');
-    }
-    return {
-      ...rows.single,
-      'items': await db.query(
-        'payslip_items',
-        where: 'payslip_id=?',
-        whereArgs: [id],
-      ),
-      'checks': await db.query(
+    return db.transaction((tx) async {
+      final rows = await tx.rawQuery(
+        'SELECT p.*,e.full_name,pp.code AS period_code,pp.starts_on,pp.ends_on '
+        'FROM v_payslip_totals p JOIN employees e ON e.id=p.employee_id '
+        'JOIN payroll_periods pp ON pp.id=p.period_id WHERE p.id=? '
+        '${managing ? '' : 'AND e.user_id=?'}',
+        managing ? [id] : [id, session.userId],
+      );
+      if (rows.isEmpty) {
+        throw const AuthException('Không có quyền xem phiếu lương này.');
+      }
+      final payslip = rows.single;
+      final checks = await tx.query(
         'employee_payroll_checks',
         where: 'period_id=? AND employee_id=?',
-        whereArgs: [rows.single['period_id'], rows.single['employee_id']],
+        whereArgs: [payslip['period_id'], payslip['employee_id']],
         orderBy: 'step_number',
-      ),
-    };
+      );
+      final completeChecks =
+          checks.length == 6 &&
+          checks.indexed.every(
+            (entry) => entry.$2['step_number'] == entry.$1 + 1,
+          );
+      final checksCurrent =
+          completeChecks &&
+          checks.last['source_hash'] ==
+              await _paySource(
+                tx,
+                payslip['period_id'] as int,
+                payslip['employee_id'] as int,
+                payslip['contract_id'] as int,
+              );
+      return {
+        ...payslip,
+        'items': await tx.query(
+          'payslip_items',
+          where: 'payslip_id=?',
+          whereArgs: [id],
+          orderBy: 'code',
+        ),
+        'checks': checks,
+        'checks_current': checksCurrent,
+      };
+    });
   }
 
   Future<void> addPayItem(

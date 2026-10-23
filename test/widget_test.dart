@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quanlinhansunhahang/screens/login_screen.dart';
 import 'package:quanlinhansunhahang/screens/payroll_screen.dart';
+import 'package:quanlinhansunhahang/screens/payroll_checks_screen.dart';
 import 'package:quanlinhansunhahang/screens/workspace_screen.dart';
 import 'package:quanlinhansunhahang/services/workforce_repository.dart';
 
@@ -93,6 +94,7 @@ void main() {
     tester,
   ) async {
     int? openedId;
+    var calculateOpened = false;
     final slips = <RowData>[
       {
         'id': 1,
@@ -122,6 +124,7 @@ void main() {
           body: EmployeePayrollScreen(
             payslips: slips,
             onRefresh: () async {},
+            onCheckPayroll: () => calculateOpened = true,
             onOpen: (row) => openedId = row['id'] as int,
           ),
         ),
@@ -129,7 +132,29 @@ void main() {
     );
 
     expect(find.text('Bảng lương của tôi'), findsOneWidget);
+    expect(find.text('Kiểm tra 6 thao tác tính lương'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Bản nháp'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Tất cả'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Đã duyệt'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Đã thanh toán'), findsOneWidget);
+
+    await tester.tap(find.text('Kiểm tra 6 thao tác tính lương'));
+    expect(calculateOpened, isTrue);
+    await tester.dragUntilVisible(
+      find.text('Phiếu #1'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Phiếu #1'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.text('Mở chi tiết bảng lương'),
+      find.byType(ListView),
+      const Offset(0, 300),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mở chi tiết bảng lương'));
+    expect(openedId, 1);
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Đã thanh toán'));
     await tester.pumpAndSettle();
@@ -143,7 +168,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Phiếu #2'), findsOneWidget);
 
-    await tester.tap(find.text('Phiếu #2'));
+    await tester.dragUntilVisible(
+      find.text('Xem chi tiết bảng lương'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xem chi tiết bảng lương'));
     expect(openedId, 2);
+  });
+
+  testWidgets('Payroll checks have a separate six-row statistics table', (
+    tester,
+  ) async {
+    final checks = [
+      for (var step = 1; step <= 6; step++)
+        <String, Object?>{
+          'step_number': step,
+          'name': 'Bước kiểm tra $step',
+          'detail': 'Kết quả bước $step',
+        },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PayrollChecksScreen(
+          payslip: {
+            'id': 7,
+            'full_name': 'Nguyễn An',
+            'period_code': 'OCT_2026',
+          },
+          checks: checks,
+          checksCurrent: true,
+        ),
+      ),
+    );
+
+    expect(find.text('Kiểm tra 6 bước tính lương'), findsOneWidget);
+    expect(find.text('Đã hoàn thành 6/6 bước'), findsOneWidget);
+    expect(find.text('Bảng thống kê các bước'), findsOneWidget);
+    expect(tester.widget<DataTable>(find.byType(DataTable)).rows, hasLength(6));
+    for (var step = 1; step <= 6; step++) {
+      expect(find.text('Bước kiểm tra $step'), findsOneWidget);
+      expect(find.text('Kết quả bước $step'), findsOneWidget);
+    }
+    expect(find.text('Đạt'), findsNWidgets(6));
   });
 }

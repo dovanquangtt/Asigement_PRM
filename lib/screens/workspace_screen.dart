@@ -520,6 +520,7 @@ class _WorkspaceState extends State<Workspace> {
                       return EmployeePayrollScreen(
                         payslips: snapshot.data! as List<RowData>,
                         onRefresh: refresh,
+                        onCheckPayroll: () => openFeature('payroll'),
                         onOpen: (row) {
                           Navigator.push<void>(
                             context,

@@ -13,6 +13,7 @@ import '../services/attendance_evidence.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import 'attendance_management_screen.dart';
+import 'payroll_checks_screen.dart';
 
 /// Ảnh mẫu dùng asset URI để không phụ thuộc đường dẫn máy tạo database.
 /// Ảnh camera thật vẫn được đọc từ thư mục riêng của app trên thiết bị.
@@ -584,6 +585,7 @@ class _OperationsPageState extends State<OperationsPage> {
           ],
         );
       case 'payroll':
+        final locked = ['approved', 'paid'].contains(row['status']);
         return Column(
           children: [
             ListTile(
@@ -594,23 +596,51 @@ class _OperationsPageState extends State<OperationsPage> {
             ),
             Wrap(
               children: [
-                button(
-                  manager
-                      ? 'Tính lương toàn kỳ'
-                      : 'Tính & kiểm tra lương của tôi',
-                  () async {
-                    final result = await r.calculatePay(row['id'] as int);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${result['message']}')),
+                if (!locked)
+                  button(
+                    manager
+                        ? 'Tính lương toàn kỳ'
+                        : 'Kiểm tra 6 thao tác tính lương',
+                    () async {
+                      final result = await r.calculatePay(row['id'] as int);
+                      if (manager && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${result['message']}')),
+                        );
+                        return;
+                      }
+                      if (!mounted) return;
+                      final payslipId = result['payslip_id'];
+                      if (payslipId is! int) {
+                        throw const AuthException(
+                          'Không tìm thấy phiếu lương vừa tính của bạn.',
+                        );
+                      }
+                      final payslip = await r.payslipDetail(payslipId);
+                      if (!mounted) return;
+                      await Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => PayrollChecksScreen(
+                            payslip: payslip,
+                            checks: payslip['checks'] as List<RowData>,
+                            checksCurrent: payslip['checks_current'] == true,
+                          ),
+                        ),
                       );
-                    }
-                  },
-                ),
-                if (manager)
+                    },
+                  ),
+                if (manager && row['status'] == 'calculating')
                   button(
                     'Duyệt kỳ lương',
                     () => r.approvePayroll(row['id'] as int),
+                  ),
+                if (!manager && locked)
+                  const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text(
+                      'Kỳ lương đã chốt. Mở phiếu ở mục Thu nhập để xem kết quả.',
+                    ),
                   ),
               ],
             ),
@@ -1833,9 +1863,33 @@ class _PayDetailPageState extends State<PayDetailPage> {
     }
   }
 
+  String statusLabel(Object? status) => switch (status) {
+    'approved' => 'Đã duyệt',
+    'paid' => 'Đã thanh toán',
+    _ => 'Bản nháp',
+  };
+
+  String itemTypeLabel(Object? type) => switch (type) {
+    'allowance' => 'Phụ cấp',
+    'bonus' => 'Thưởng',
+    'deduction' => 'Khấu trừ',
+    'tax' => 'Thuế',
+    'insurance' => 'Bảo hiểm',
+    _ => '$type',
+  };
+
+  String vnd(Object? value) {
+    final amount = (value as num?)?.toInt() ?? 0;
+    final formatted = amount.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+      (match) => '${match[1]}.',
+    );
+    return '$formatted ₫';
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Chi tiết phiếu lương')),
+    appBar: AppBar(title: const Text('Xem chi tiết bảng lương')),
     body: FutureBuilder<RowData>(
       future: loading,
       builder: (c, s) {
@@ -1843,7 +1897,29 @@ class _PayDetailPageState extends State<PayDetailPage> {
           return const Center(child: CircularProgressIndicator());
         }
         if (s.hasError) {
-          return const Center(child: Text('Không tải được phiếu lương.'));
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    s.error is AuthException
+                        ? (s.error as AuthException).message
+                        : 'Không tải được bảng lương. Hãy thử lại.',
+                    textAlign: TextAlign.center,
+                  ),
+                  TextButton(
+                    onPressed: () => setState(
+                      () =>
+                          loading = widget.repository.payslipDetail(widget.id),
+                    ),
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
         final pay = s.data!;
         return ListView(
@@ -1851,34 +1927,43 @@ class _PayDetailPageState extends State<PayDetailPage> {
           children: [
             heading(
               '${pay['full_name']}',
-              'PHIẾU #${pay['id']} • ${pay['status']}',
+              'PHIẾU #${pay['id']} • ${statusLabel(pay['status'])}',
+            ),
+            money(
+              'Kỳ lương',
+              '${pay['period_code']} • ${pay['starts_on']} – ${pay['ends_on']}',
             ),
             money('Công thường', '${pay['regular_minutes']} phút'),
             money('Công tăng ca', '${pay['overtime_minutes']} phút'),
-            money('Lương thường', '${pay['base_pay_vnd']} VND'),
-            money('Lương tăng ca', '${pay['overtime_pay_vnd']} VND'),
+            money('Lương thường', vnd(pay['base_pay_vnd'])),
+            money('Lương tăng ca', vnd(pay['overtime_pay_vnd'])),
             for (final item in pay['items'] as List<RowData>)
               money(
-                '${item['name']} (${item['item_type']})',
-                '${item['amount_vnd']} VND',
+                '${item['name']} (${itemTypeLabel(item['item_type'])})',
+                vnd(item['amount_vnd']),
               ),
-            money('Thực lĩnh', '${pay['net_pay_vnd']} VND', bold: true),
+            money('Tổng thu nhập', vnd(pay['gross_pay_vnd'])),
+            money('Tổng khấu trừ', vnd(pay['deductions_vnd'])),
+            money('Thực lĩnh', vnd(pay['net_pay_vnd']), bold: true),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => PayrollChecksScreen(
+                    payslip: pay,
+                    checks: pay['checks'] as List<RowData>,
+                    checksCurrent: pay['checks_current'] == true,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('Xem bảng kiểm tra 6 bước'),
+            ),
             if (widget.repository.session.role != 'Nhân viên' &&
                 pay['status'] == 'draft')
               OutlinedButton(
                 onPressed: add,
                 child: const Text('Thêm khoản cộng/trừ'),
-              ),
-            section('Kiểm tra 6 bước tính lương'),
-            if ((pay['checks'] as List).length != 6)
-              const Text(
-                'Chưa đủ 6 bước hoặc đã sửa khoản điều chỉnh. Hãy tính lại lương.',
-              ),
-            for (final check in pay['checks'] as List<RowData>)
-              ListTile(
-                leading: CircleAvatar(child: Text('${check['step_number']}')),
-                title: Text('${check['name']}'),
-                subtitle: Text('${check['detail']}'),
               ),
           ],
         );

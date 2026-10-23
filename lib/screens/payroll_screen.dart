@@ -10,11 +10,13 @@ class EmployeePayrollScreen extends StatefulWidget {
     required this.payslips,
     required this.onRefresh,
     required this.onOpen,
+    required this.onCheckPayroll,
   });
 
   final List<RowData> payslips;
   final Future<void> Function() onRefresh;
   final ValueChanged<RowData> onOpen;
+  final VoidCallback onCheckPayroll;
 
   @override
   State<EmployeePayrollScreen> createState() => _EmployeePayrollScreenState();
@@ -25,7 +27,6 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
 
   static const filters = [
     ('all', 'Tất cả'),
-    ('draft', 'Bản nháp'),
     ('approved', 'Đã duyệt'),
     ('paid', 'Đã thanh toán'),
   ];
@@ -75,6 +76,12 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
         children: [
           heading('Bảng lương của tôi', 'THU NHẬP CÁ NHÂN'),
+          FilledButton.icon(
+            onPressed: widget.onCheckPayroll,
+            icon: const Icon(Icons.calculate_outlined),
+            label: const Text('Kiểm tra 6 thao tác tính lương'),
+          ),
+          const SizedBox(height: 12),
           if (latest != null) ...[
             Container(
               padding: const EdgeInsets.all(22),
@@ -147,7 +154,7 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
                       side: const BorderSide(color: Colors.white54),
                     ),
                     icon: const Icon(Icons.open_in_new, size: 18),
-                    label: const Text('Xem chi tiết phiếu'),
+                    label: const Text('Mở chi tiết bảng lương'),
                   ),
                 ],
               ),
@@ -336,7 +343,7 @@ class _PayslipTile extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 Text(
-                  'Chi tiết phiếu',
+                  'Xem chi tiết bảng lương',
                   style: TextStyle(color: green, fontSize: 12),
                 ),
                 SizedBox(width: 5),

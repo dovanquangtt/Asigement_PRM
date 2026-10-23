@@ -300,12 +300,22 @@ void main() {
         DateTime.utc(2026, 10, 31),
         1.5,
       );
-      await employee.calculatePay(period);
+      final calculated = await employee.calculatePay(period);
       final own = (await employee.payslips()).single;
       expect(own['net_pay_vnd'], 570000);
+      expect(calculated['payslip_id'], own['id']);
+      var detail = await employee.payslipDetail(own['id'] as int);
+      expect(detail['checks'], hasLength(6));
+      expect(detail['checks_current'], isTrue);
+      expect(detail['period_code'], 'OCT_2026');
+      expect(detail['starts_on'], '2026-10-01');
+      expect(detail['gross_pay_vnd'], 570000);
+      expect(detail['deductions_vnd'], 0);
       expect(
-        (await employee.payslipDetail(own['id'] as int))['checks'],
-        hasLength(6),
+        (detail['checks'] as List<RowData>)
+            .map((check) => check['step_number'])
+            .toList(),
+        [1, 2, 3, 4, 5, 6],
       );
       await expectLater(
         employee.calculatePay(
@@ -321,6 +331,12 @@ void main() {
         'bonus',
         10000,
       );
+      detail = await employee.payslipDetail(own['id'] as int);
+      expect(detail['checks'], isEmpty);
+      expect(detail['checks_current'], isFalse);
+      expect(detail['items'], hasLength(1));
+      expect(detail['gross_pay_vnd'], 580000);
+      expect(detail['net_pay_vnd'], 580000);
       await expectLater(
         manager.approvePayroll(period),
         throwsA(isA<AuthException>()),
@@ -328,12 +344,28 @@ void main() {
       await manager.calculatePay(period);
       expect(await f.db.query('payroll_calculation_steps'), hasLength(6));
       expect((await employee.payslips()).single['net_pay_vnd'], 580000);
+      final otherPayslips = await f.db.query(
+        'payslips',
+        where: 'period_id=? AND employee_id<>?',
+        whereArgs: [period, employee.session.profile['id']],
+      );
+      expect(otherPayslips, isNotEmpty);
+      await expectLater(
+        employee.payslipDetail(otherPayslips.first['id'] as int),
+        throwsA(isA<AuthException>()),
+      );
       await f.db.update('attendance_records', {'late_minutes': 1});
+      detail = await employee.payslipDetail(own['id'] as int);
+      expect(detail['checks'], hasLength(6));
+      expect(detail['checks_current'], isFalse);
       await expectLater(
         manager.approvePayroll(period),
         throwsA(isA<AuthException>()),
       );
       await manager.calculatePay(period);
+      detail = await employee.payslipDetail(own['id'] as int);
+      expect(detail['checks'], hasLength(6));
+      expect(detail['checks_current'], isTrue);
       await manager.approvePayroll(period);
       await expectLater(
         employee.calculatePay(period),
