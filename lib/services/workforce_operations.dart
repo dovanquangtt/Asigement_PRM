@@ -117,6 +117,14 @@ extension WorkforceOperations on WorkforceRepository {
     });
   }
 
+  /// "16/10 08:00-16:00" in Vietnam time (UTC+7) for notification texts.
+  String _shiftLabel(RowData shift) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final a = utcTime(shift['starts_at']).add(const Duration(hours: 7));
+    final b = utcTime(shift['ends_at']).add(const Duration(hours: 7));
+    return '${two(a.day)}/${two(a.month)} ${two(a.hour)}:${two(a.minute)}-${two(b.hour)}:${two(b.minute)}';
+  }
+
   Future<void> unassignShift(int shiftId, int employeeId) async {
     final db = await _open();
     await db.transaction((tx) async {
@@ -154,6 +162,14 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [id],
       );
       await _audit(tx, 'shift.unassign', 'shift_assignments', id);
+      await _notify(
+        tx,
+        await _employeeUsers(tx, [employeeId]),
+        'Ca làm đã bị gỡ',
+        'Bạn không còn được phân vào ca ${_shiftLabel(shift)}.',
+        'shifts',
+        shiftId,
+      );
     });
   }
 
@@ -184,6 +200,12 @@ extension WorkforceOperations on WorkforceRepository {
       )).isNotEmpty) {
         throw const AuthException('Không thể hủy ca đã có chấm công.');
       }
+      final affected = (await tx.query(
+        'shift_assignments',
+        columns: ['employee_id'],
+        where: "shift_id=? AND status='assigned'",
+        whereArgs: [shiftId],
+      )).map((r) => r['employee_id'] as int).toList();
       await tx.update(
         'shift_assignments',
         {'status': 'cancelled'},
@@ -197,6 +219,14 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [shiftId],
       );
       await _audit(tx, 'shift.cancel', 'shifts', shiftId);
+      await _notify(
+        tx,
+        await _employeeUsers(tx, affected),
+        'Ca làm đã bị hủy',
+        'Ca ${_shiftLabel(shift)} đã bị hủy.',
+        'shifts',
+        shiftId,
+      );
     });
   }
 
@@ -293,6 +323,9 @@ extension WorkforceOperations on WorkforceRepository {
         'employee_id': employeeId,
         'assigned_by': session.userId,
         'status': 'assigned',
+        'response_status': 'pending',
+        'responded_at': null,
+        'response_note': null,
       };
       final id = old.isEmpty
           ? await tx.insert('shift_assignments', data)
@@ -306,6 +339,14 @@ extension WorkforceOperations on WorkforceRepository {
         );
       }
       await _audit(tx, 'shift.assign', 'shift_assignments', id);
+      await _notify(
+        tx,
+        await _employeeUsers(tx, [employeeId]),
+        'Bạn có ca làm mới',
+        'Bạn được phân vào ca ${_shiftLabel(shift)}. Hãy chấp nhận hoặc từ chối.',
+        'shifts',
+        shiftId,
+      );
     });
   }
 
@@ -364,6 +405,9 @@ extension WorkforceOperations on WorkforceRepository {
         s.note AS shift_note,
         b.name AS branch_name,
         a.status AS assignment_status,
+        a.response_status,
+        a.responded_at,
+        a.response_note,
         (SELECT GROUP_CONCAT(e2.full_name, ', ')
          FROM shift_assignments a2
          JOIN employees e2 ON e2.id=a2.employee_id
@@ -817,6 +861,14 @@ extension WorkforceOperations on WorkforceRepository {
     DateTime clock,
   ) async {
     await _ensureAttendanceEditable(tx, assignmentId);
+    if ((await tx.query(
+      'attendance_records',
+      columns: ['id'],
+      where: "assignment_id=? AND attendance_state='VOIDED'",
+      whereArgs: [assignmentId],
+    )).isNotEmpty) {
+      throw const AuthException('Công đã bị hủy. Hãy liên hệ quản lý.');
+    }
     final start = utcTime(s['starts_at']);
     final end = utcTime(s['ends_at']);
     if (type == 'check_in') {
@@ -945,6 +997,12 @@ extension WorkforceOperations on WorkforceRepository {
         throw const AuthException(
           'Chỉ đổi ca tương lai với nhân viên khác cùng chi nhánh.',
         );
+      }
+      if ((await tx.rawQuery(
+        "SELECT id FROM shift_swap_requests WHERE status='pending' AND (from_assignment_id IN (?,?) OR to_assignment_id IN (?,?)) LIMIT 1",
+        [from, to, from, to],
+      )).isNotEmpty) {
+        throw const AuthException('Ca này đang có yêu cầu đổi ca chờ xử lý.');
       }
       final requestId = await tx.insert('shift_swap_requests', {
         'from_assignment_id': from,

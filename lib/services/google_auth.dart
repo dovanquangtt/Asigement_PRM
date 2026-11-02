@@ -7,8 +7,29 @@ abstract interface class GoogleAuth {
   Future<void> signOut();
 }
 
-class DeviceGoogleAuth implements GoogleAuth {
+/// Implemented by sign-in sources that can hand a Google ID token to the
+/// Spring Boot backend, which verifies it with Google before issuing a session.
+abstract interface class GoogleIdTokenSource {
+  Future<String> authenticateForIdToken();
+}
+
+class DeviceGoogleAuth implements GoogleAuth, GoogleIdTokenSource {
   static Future<void>? _initialization;
+
+  @override
+  Future<String> authenticateForIdToken() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw UnsupportedError('Google sign-in is configured for Android.');
+    }
+    await _initialize();
+    await GoogleSignIn.instance.signOut();
+    final account = await GoogleSignIn.instance.authenticate();
+    final idToken = account.authentication.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw StateError('GOOGLE_WEB_CLIENT_ID');
+    }
+    return idToken;
+  }
 
   Future<void> _initialize() async {
     const serverId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');

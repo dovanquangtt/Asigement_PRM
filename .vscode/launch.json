@@ -8,7 +8,8 @@
       "program": "lib/main.dart",
       "flutterMode": "debug",
       "toolArgs": [
-        "--dart-define=GOOGLE_WEB_CLIENT_ID=218316396722-ejde4t686447ofqgd0m6veqau1ogl1b6.apps.googleusercontent.com"
+        "--dart-define=GOOGLE_WEB_CLIENT_ID=218316396722-ejde4t686447ofqgd0m6veqau1ogl1b6.apps.googleusercontent.com",
+        "--dart-define=API_BASE_URL=http://10.0.2.2:8080"
       ]
     }
   ]

@@ -741,6 +741,109 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+  /// Chấp nhận / từ chối ca được phân. Chỉ hỏi khi ca còn chờ phản hồi và chưa bắt đầu.
+  Future<void> _respond(int assignmentId, bool accept) async {
+    String note = '';
+    if (!accept) {
+      final controller = TextEditingController();
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Từ chối ca làm?'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Lý do (bắt buộc)'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  Navigator.pop(c, controller.text.trim());
+                }
+              },
+              child: const Text('Từ chối ca'),
+            ),
+          ],
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      controller.dispose();
+      if (reason == null || !mounted) return;
+      note = reason;
+    }
+    try {
+      await r.respondAssignment(assignmentId, accept, note: note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accept
+                ? 'Đã chấp nhận ca làm.'
+                : 'Đã từ chối ca. Quản lý sẽ được báo.',
+          ),
+        ),
+      );
+      _reload();
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
+  List<Widget> _responseSection(RowData shift) {
+    final response = shift['response_status']?.toString() ?? 'accepted';
+    final canRespond =
+        response == 'pending' &&
+        shift['assignment_status'] == 'assigned' &&
+        shift['shift_status'] == 'scheduled' &&
+        utcTime(shift['starts_at']).isAfter(DateTime.now().toUtc());
+    final (label, color) = switch (response) {
+      'pending' => ('Chờ bạn xác nhận', Colors.orange.shade800),
+      'rejected' => ('Bạn đã từ chối', Colors.red.shade700),
+      _ => ('Đã chấp nhận', green),
+    };
+    return [
+      const SizedBox(height: 10),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Chip(
+          label: Text(label),
+          labelStyle: TextStyle(color: color, fontWeight: FontWeight.w700),
+          side: BorderSide(color: color),
+          backgroundColor: Colors.white,
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+      if (canRespond)
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => _respond(shift['assignment_id'] as int, true),
+                icon: const Icon(Icons.check),
+                label: const Text('Chấp nhận'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _respond(shift['assignment_id'] as int, false),
+                icon: const Icon(Icons.close),
+                label: const Text('Từ chối'),
+              ),
+            ),
+          ],
+        ),
+    ];
+  }
+
   Widget _buildShiftCard(BuildContext context, RowData shift) {
     final startVn = utcTime(shift['starts_at']).toLocal();
     final endVn = utcTime(shift['ends_at']).toLocal();
@@ -883,6 +986,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           fontSize: 13,
                         ),
                       ),
+
+                      ..._responseSection(shift),
 
                       if (shift['shift_note'] != null &&
                           shift['shift_note'].toString().isNotEmpty) ...[

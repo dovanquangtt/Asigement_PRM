@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../services/auth_service.dart';
+import '../widgets/status_highlight.dart';
 import '../services/workforce_repository.dart';
 import '../services/attendance_sensors.dart';
 import '../services/attendance_evidence.dart';
@@ -280,9 +281,13 @@ class _OperationsPageState extends State<OperationsPage> {
     } catch (_) {}
   }
 
-  Future<void> action(Future<void> Function() work) async {
+  Future<void> action(Future<void> Function() work, {String? success}) async {
     try {
       await work();
+      if (mounted && success != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(success)));
+      }
       if (mounted) await refresh();
     } on AuthException catch (e) {
       if (mounted) {
@@ -298,8 +303,14 @@ class _OperationsPageState extends State<OperationsPage> {
     }
   }
 
-  Widget button(String label, Future<void> Function() work) =>
-      TextButton(onPressed: () => action(work), child: Text(label));
+  Widget button(
+    String label,
+    Future<void> Function() work, {
+    String? success,
+  }) => TextButton(
+    onPressed: () => action(work, success: success),
+    child: Text(label),
+  );
   Future<void> reviewAttendance(RowData row, bool approve) async {
     await featureForm(
       context,
@@ -573,14 +584,42 @@ class _OperationsPageState extends State<OperationsPage> {
                     : 'Đã duyệt • Mã thiết bị: ${row['device_identifier']}',
               ),
             ),
-            Wrap(
-              children: [
-                button('Duyệt', () => r.approveDevice(row['id'] as int)),
-                button(
-                  'Thu hồi',
-                  () => r.approveDevice(row['id'] as int, revoke: true),
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: row['revoked_at'] != null
+                  ? StatusHighlight.revoked()
+                  : row['approved_by'] == null
+                  ? Wrap(
+                      children: [
+                        button(
+                          'Duyệt',
+                          () => r.approveDevice(row['id'] as int),
+                        ),
+                        button(
+                          'Thu hồi',
+                          () => r.approveDevice(row['id'] as int, revoke: true),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        StatusHighlight.approved(),
+                        const Spacer(),
+                        PopupMenuButton<String>(
+                          tooltip: 'Thao tác khác',
+                          onSelected: (_) => action(
+                            () =>
+                                r.approveDevice(row['id'] as int, revoke: true),
+                          ),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'revoke',
+                              child: Text('Thu hồi thiết bị'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
             ),
           ],
         );
@@ -691,15 +730,24 @@ class _OperationsPageState extends State<OperationsPage> {
                       () => r.respondSwap(row['id'] as int, false),
                     ),
                   ],
-                  if (manager) ...[
+                  if (manager && row['counterpart_status'] != 'accepted')
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Text('Đang chờ người nhận đồng ý.'),
+                    ),
+                  if (manager && row['counterpart_status'] == 'accepted') ...[
                     button(
                       'Duyệt đổi',
                       () => r.respondSwap(row['id'] as int, true, review: true),
+                      success:
+                          'Đã duyệt đổi ca. Đã gửi thông báo cho nhân viên.',
                     ),
                     button(
                       'Không duyệt',
                       () =>
                           r.respondSwap(row['id'] as int, false, review: true),
+                      success:
+                          'Đã từ chối đổi ca. Đã gửi thông báo cho nhân viên.',
                     ),
                   ],
                 ],
@@ -1047,11 +1095,26 @@ class _ShiftPageState extends State<ShiftPage> {
   }
 
   Future<void> swap(int own) async {
+    final shift = await r.shiftDetail(widget.shiftId);
+    if (!mounted) return;
+    if (shift['status'] != 'scheduled' ||
+        utcTime(shift['starts_at']).isBefore(DateTime.now().toUtc())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ca này đã bắt đầu hoặc đã kết thúc nên không thể đổi.'),
+        ),
+      );
+      return;
+    }
     final options = await r.swapOptions(own);
     if (!mounted) return;
     if (options.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không có ca phù hợp để đổi lúc này.')),
+        const SnackBar(
+          content: Text(
+            'Chưa có nhân viên nào cùng chi nhánh có ca sắp tới để đổi.',
+          ),
+        ),
       );
       return;
     }

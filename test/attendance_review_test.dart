@@ -175,7 +175,9 @@ void main() {
       contains('đối chiếu'),
     );
     expect(
-      (await employee.notifications()).single['title'],
+      (await employee.notifications())
+          .where((n) => n['title'] == 'Kết quả duyệt điểm danh')
+          .single['title'],
       'Kết quả duyệt điểm danh',
     );
     await expectLater(

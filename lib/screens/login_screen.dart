@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/backend_shell.dart';
+import '../core/config/api_config.dart';
 import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
 import 'workspace_screen.dart';
@@ -81,14 +83,7 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute<void>(
-          builder: (_) => Workspace(
-            session: session,
-            auth: auth,
-            repository: WorkforceRepository(
-              session,
-              openDatabase: () => auth.database,
-            ),
-          ),
+          builder: (_) => homeFor(session),
         ),
       );
     } on AuthException catch (e) {
@@ -102,6 +97,19 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  /// With API_BASE_URL set the user signed in against Spring Boot and works through the
+  /// API-backed shell; otherwise the original offline (SQLite) workspace opens.
+  Widget homeFor(UserSession session) => ApiConfig.enabled
+      ? BackendShell(session: session, auth: auth)
+      : Workspace(
+          session: session,
+          auth: auth,
+          repository: WorkforceRepository(
+            session,
+            openDatabase: () => auth.database,
+          ),
+        );
+
   Future<void> enterGoogle() async {
     if (busy) return;
     setState(() {
@@ -114,14 +122,7 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute<void>(
-          builder: (_) => Workspace(
-            session: session,
-            auth: auth,
-            repository: WorkforceRepository(
-              session,
-              openDatabase: () => auth.database,
-            ),
-          ),
+          builder: (_) => homeFor(session),
         ),
       );
     } on AuthException catch (e) {

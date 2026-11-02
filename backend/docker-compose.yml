@@ -1,0 +1,20 @@
+# Optional: only needed if you do not already have a local MySQL server.
+services:
+  database:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-prm_database}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - prm_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  prm_mysql_data:

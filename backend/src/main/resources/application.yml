@@ -1,0 +1,33 @@
+spring:
+  config:
+    # Optional backend/.env (KEY=value lines) loaded when the app starts from the backend folder.
+    import: optional:file:.env[.properties]
+  application:
+    name: quanlinhansunhahang-backend
+  datasource:
+    # MySQL 8+. connectionTimeZone=UTC: every DATETIME is stored and read as UTC.
+    url: ${DB_URL:jdbc:mysql://localhost:3306/prm_database?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:123456}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+app:
+  jwt:
+    # At least 32 bytes. Always override JWT_SECRET outside local development.
+    secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+    ttl-minutes: ${JWT_TTL_MINUTES:720}
+  google:
+    # Comma separated OAuth client ids allowed as the ID token audience
+    # (the Web client id the Flutter app passes as GOOGLE_WEB_CLIENT_ID).
+    client-ids: ${GOOGLE_CLIENT_IDS:}
+
+server:
+  port: ${SERVER_PORT:8080}

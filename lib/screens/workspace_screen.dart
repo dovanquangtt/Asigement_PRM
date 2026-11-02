@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -8,6 +10,7 @@ import 'login_screen.dart';
 import 'operations_screen.dart';
 import 'notifications_screen.dart';
 import 'attendance_management_screen.dart';
+import 'employee_shift_table_screen.dart';
 import 'payroll_screen.dart';
 import 'schedule_screen.dart';
 
@@ -103,8 +106,9 @@ class _WorkspaceState extends State<Workspace> {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) =>
-            kind == 'attendance_review' || kind == 'attendance_management'
+        builder: (_) => kind == 'shift_table'
+            ? EmployeeShiftTableScreen(repository: repository)
+            : kind == 'attendance_review' || kind == 'attendance_management'
             ? AttendanceManagementScreen(
                 repository: repository,
                 self: widget.session.role == 'Nhân viên',
@@ -196,6 +200,65 @@ class _WorkspaceState extends State<Workspace> {
     super.initState();
     repository = widget.repository ?? WorkforceRepository(widget.session);
     loading = load();
+    _pollNotifications();
+    _poller = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollNotifications(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Timer? _poller;
+  int? _lastNotificationId;
+  int unread = 0;
+
+  /// Kiểm tra thông báo mới và hiện ngay trên màn hình đang mở.
+  Future<void> _pollNotifications() async {
+    try {
+      final rows = await repository.notifications();
+      if (!mounted) return;
+      final ids = [for (final r in rows) r['id'] as int];
+      final newest = ids.isEmpty ? 0 : ids.reduce((a, b) => a > b ? a : b);
+      final last = _lastNotificationId;
+      final fresh = last == null
+          ? const <RowData>[]
+          : rows
+                .where((r) => (r['id'] as int) > last && r['read_at'] == null)
+                .toList();
+      setState(() {
+        _lastNotificationId = newest;
+        unread = rows.where((r) => r['read_at'] == null).length;
+      });
+      if (fresh.isNotEmpty) {
+        final top = fresh.first;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                '${top['title']}: ${top['body']}'
+                '${fresh.length > 1 ? ' (+${fresh.length - 1} thông báo mới)' : ''}',
+              ),
+              action: SnackBarAction(label: 'Xem', onPressed: _openNotifications),
+            ),
+          );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationsPage(repository: repository),
+      ),
+    );
+    if (mounted) await _pollNotifications();
   }
 
   Future<Object> load() => switch (current) {
@@ -285,6 +348,8 @@ class _WorkspaceState extends State<Workspace> {
             ('attendance_review', 'Quản lý chấm công & ngoại lệ'),
           if (widget.session.role == 'Nhân viên')
             ('attendance_management', 'Công của tôi & yêu cầu sửa công'),
+          if (widget.session.role != 'Nhân viên')
+            ('shift_table', 'Bảng ca theo từng nhân viên'),
           if (widget.session.role != 'Nhân viên') ...[
             ('devices', 'Duyệt thiết bị nhân viên'),
             ('branches', 'Cấu hình GPS & Wi-Fi chi nhánh'),
@@ -463,13 +528,12 @@ class _WorkspaceState extends State<Workspace> {
         ),
         IconButton(
           tooltip: 'Thông báo',
-          icon: const Icon(Icons.notifications_outlined),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => NotificationsPage(repository: repository),
-            ),
+          icon: Badge(
+            isLabelVisible: unread > 0,
+            label: Text('$unread'),
+            child: const Icon(Icons.notifications_outlined),
           ),
+          onPressed: _openNotifications,
         ),
         IconButton(
           onPressed: refresh,

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
+import 'attendance_sheet_screen.dart';
 
 String attendanceTime(Object? value) {
   if (value == null) return 'Chưa ghi nhận';
@@ -102,7 +103,9 @@ class _AttendanceManagementScreenState
       widget.repository.attendanceManagement(day: day, self: widget.self);
   Future<void> refresh() async {
     final next = load();
-    setState(() => loading = next);
+    setState(() {
+      loading = next;
+    });
     await next;
   }
 
@@ -182,6 +185,17 @@ class _AttendanceManagementScreenState
     appBar: AppBar(
       title: Text(widget.self ? 'Công của tôi' : 'Quản lý chấm công'),
       actions: [
+        IconButton(
+          tooltip: 'Bảng điểm danh theo tháng',
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  AttendanceSheetScreen(repository: widget.repository),
+            ),
+          ),
+          icon: const Icon(Icons.table_chart_outlined),
+        ),
         IconButton(
           tooltip: 'Cập nhật',
           onPressed: busy ? null : refresh,
@@ -378,7 +392,9 @@ class _AttendanceCaseScreenState extends State<AttendanceCaseScreen> {
 
   Future<void> refresh() async {
     final next = widget.repository.attendanceCaseDetail(widget.assignmentId);
-    setState(() => loading = next);
+    setState(() {
+      loading = next;
+    });
     await next;
   }
 

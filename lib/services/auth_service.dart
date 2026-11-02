@@ -4,6 +4,8 @@ import 'package:bcrypt/bcrypt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../core/config/api_config.dart';
+import 'backend_auth.dart';
 import 'local_database.dart';
 import 'google_auth.dart';
 
@@ -72,6 +74,12 @@ class AuthService {
 
   Future<UserSession> signInGoogle() async {
     try {
+      final source = _googleAuth;
+      if (ApiConfig.enabled && source is GoogleIdTokenSource) {
+        return await BackendAuth().loginWithGoogle(
+          await (source as GoogleIdTokenSource).authenticateForIdToken(),
+        );
+      }
       final account = await _googleAuth.authenticate();
       final db = await _openDatabase();
       return await db.transaction((tx) async {
@@ -135,6 +143,11 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
+      await BackendAuth().signOut();
+    } catch (_) {
+      // A token that cannot be cleared must not block signing out.
+    }
+    try {
       await _googleAuth.signOut();
     } catch (_) {
       // Navigation still removes the local session when Google cleanup fails.
@@ -142,6 +155,7 @@ class AuthService {
   }
 
   Future<UserSession> signIn(String username, String password) async {
+    if (ApiConfig.enabled) return BackendAuth().login(username, password);
     final db = await _openDatabase();
     final users = await db.query(
       'users',

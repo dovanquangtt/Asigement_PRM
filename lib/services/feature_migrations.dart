@@ -94,7 +94,7 @@ Future<void> migrateFeatures(Database db) async {
         'Chưa phân công nhân viên')
       WHERE note LIKE '[DEMO %] Dữ liệu mẫu để thử chức năng;%'
     """);
-    if (version >= 6) return;
+    if (version >= 7) return;
     if (version < 3) {
       // v3: duyệt thiết bị, liên kết Google và lưu kết quả kiểm tra lương.
       await tx.execute(
@@ -146,34 +146,44 @@ Future<void> migrateFeatures(Database db) async {
         "CREATE UNIQUE INDEX ux_attendance_pending ON attendance_events(assignment_id,event_type) WHERE result='pending_review'",
       );
     }
-    // v6: attendance exceptions, adjustments, overtime approval and closing.
-    for (final column in [
-      "arrival_status TEXT CHECK(arrival_status IN ('ON_TIME','LATE'))",
-      "attendance_state TEXT NOT NULL DEFAULT 'IN_PROGRESS'",
-      'overtime_requested_minutes INTEGER NOT NULL DEFAULT 0 CHECK(overtime_requested_minutes>=0)',
-      "overtime_status TEXT NOT NULL DEFAULT 'NOT_REQUIRED'",
-      'overtime_reviewed_by INTEGER REFERENCES users(id)',
-      'overtime_reviewed_at TEXT',
-      'overtime_review_note TEXT',
-      'locked_by INTEGER REFERENCES users(id)',
-      'locked_at TEXT',
-    ]) {
-      await tx.execute('ALTER TABLE attendance_records ADD COLUMN $column');
-    }
-    for (final column in ['before_json TEXT', 'evidence_path TEXT']) {
+    if (version < 6) {
+      // v6: attendance exceptions, adjustments, overtime approval and closing.
+      for (final column in [
+        "arrival_status TEXT CHECK(arrival_status IN ('ON_TIME','LATE'))",
+        "attendance_state TEXT NOT NULL DEFAULT 'IN_PROGRESS'",
+        'overtime_requested_minutes INTEGER NOT NULL DEFAULT 0 CHECK(overtime_requested_minutes>=0)',
+        "overtime_status TEXT NOT NULL DEFAULT 'NOT_REQUIRED'",
+        'overtime_reviewed_by INTEGER REFERENCES users(id)',
+        'overtime_reviewed_at TEXT',
+        'overtime_review_note TEXT',
+        'locked_by INTEGER REFERENCES users(id)',
+        'locked_at TEXT',
+      ]) {
+        await tx.execute('ALTER TABLE attendance_records ADD COLUMN $column');
+      }
+      for (final column in ['before_json TEXT', 'evidence_path TEXT']) {
+        await tx.execute(
+          'ALTER TABLE attendance_adjustment_requests ADD COLUMN $column',
+        );
+      }
       await tx.execute(
-        'ALTER TABLE attendance_adjustment_requests ADD COLUMN $column',
+        'ALTER TABLE branches ADD COLUMN require_overtime_approval INTEGER NOT NULL DEFAULT 0 CHECK(require_overtime_approval IN (0,1))',
+      );
+      await tx.execute(
+        "CREATE UNIQUE INDEX ux_pending_attendance_adjustment ON attendance_adjustment_requests(attendance_id) WHERE status='pending'",
+      );
+      await tx.execute(
+        "UPDATE attendance_records SET arrival_status=CASE WHEN check_in_at IS NULL THEN NULL WHEN late_minutes>0 THEN 'LATE' ELSE 'ON_TIME' END,attendance_state=CASE WHEN check_in_at IS NULL THEN 'MISSING_CHECK_IN' WHEN check_out_at IS NULL THEN 'IN_PROGRESS' ELSE 'COMPLETED' END",
       );
     }
-    await tx.execute(
-      'ALTER TABLE branches ADD COLUMN require_overtime_approval INTEGER NOT NULL DEFAULT 0 CHECK(require_overtime_approval IN (0,1))',
-    );
-    await tx.execute(
-      "CREATE UNIQUE INDEX ux_pending_attendance_adjustment ON attendance_adjustment_requests(attendance_id) WHERE status='pending'",
-    );
-    await tx.execute(
-      "UPDATE attendance_records SET arrival_status=CASE WHEN check_in_at IS NULL THEN NULL WHEN late_minutes>0 THEN 'LATE' ELSE 'ON_TIME' END,attendance_state=CASE WHEN check_in_at IS NULL THEN 'MISSING_CHECK_IN' WHEN check_out_at IS NULL THEN 'IN_PROGRESS' ELSE 'COMPLETED' END",
-    );
-    await tx.execute('PRAGMA user_version=6');
+    // v7: employees accept or reject assigned shifts. Existing assignments count as accepted.
+    for (final column in [
+      "response_status TEXT NOT NULL DEFAULT 'accepted' CHECK(response_status IN ('pending','accepted','rejected'))",
+      'responded_at TEXT',
+      'response_note TEXT',
+    ]) {
+      await tx.execute('ALTER TABLE shift_assignments ADD COLUMN $column');
+    }
+    await tx.execute('PRAGMA user_version=7');
   });
 }

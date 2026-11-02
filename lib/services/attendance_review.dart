@@ -56,6 +56,9 @@ extension AttendanceReview on WorkforceRepository {
         where: 'assignment_id=?',
         whereArgs: [assignmentId],
       )).firstOrNull;
+      if (currentRecord?['attendance_state'] == 'VOIDED') {
+        throw const AuthException('Công đã bị hủy. Hãy liên hệ quản lý.');
+      }
       if (currentRecord?[type == 'check_in' ? 'check_in_at' : 'check_out_at'] !=
           null) {
         throw const AuthException(

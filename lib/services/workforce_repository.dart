@@ -14,6 +14,8 @@ import 'feature_sample_data.dart';
 part 'workforce_operations.dart';
 part 'attendance_review.dart';
 part 'attendance_management.dart';
+part 'attendance_sheet.dart';
+part 'shift_response.dart';
 
 typedef RowData = Map<String, Object?>;
 

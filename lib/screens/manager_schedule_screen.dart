@@ -74,13 +74,15 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
       return;
     }
 
-    final created = await showDialog<bool>(
+    final created = await showDialog<int>(
       context: context,
       builder: (_) => _CreateShiftModal(repository: r, branches: branches),
     );
 
-    if (created == true && mounted) {
+    if (created != null && mounted) {
       _reload();
+      // Nhân viên chỉ thấy ca sau khi được phân công, nên mở luôn bước chọn nhân viên.
+      await _showAssignDialog(created, 'Ca vừa tạo');
     }
   }
 
@@ -868,6 +870,7 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
   late Future<List<RowData>> _loading;
   String _searchQuery = '';
   bool _busy = false;
+  final Set<int> _selected = {};
 
   @override
   void initState() {
@@ -881,31 +884,41 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
     });
   }
 
-  Future<void> _assign(int employeeId) async {
-    if (_busy) return;
+  Future<void> _assignSelected() async {
+    if (_busy || _selected.isEmpty) return;
     setState(() => _busy = true);
-    try {
-      await widget.repository.assignShift(widget.shiftId, employeeId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✓ Đã phân nhân viên vào ca thành công!')),
-        );
-        Navigator.pop(context, true);
+    var done = 0;
+    final errors = <String>[];
+    for (final id in _selected.toList()) {
+      try {
+        await widget.repository.assignShift(widget.shiftId, id);
+        done++;
+        _selected.remove(id);
+      } on AuthException catch (e) {
+        errors.add(e.message);
+        _selected.remove(id);
+      } catch (_) {
+        errors.add('Không phân ca được. Hãy thử lại.');
+        _selected.remove(id);
       }
-    } on AuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không phân ca được. Hãy thử lại.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (errors.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('✓ Đã phân $done nhân viên vào ca thành công!')),
+      );
+      Navigator.pop(context, true);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Phân thành công $done, lỗi ${errors.length}: ${errors.first}',
+          ),
+        ),
+      );
+      _reload();
     }
   }
 
@@ -1066,21 +1079,18 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
                                 ),
                               ),
                               if (isAvailable)
-                                FilledButton(
-                                  onPressed: _busy ? null : () => _assign(empId),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: green,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 8,
-                                    ),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text('Phân ca'),
+                                Checkbox(
+                                  value: _selected.contains(empId),
+                                  activeColor: green,
+                                  onChanged: _busy
+                                      ? null
+                                      : (v) => setState(() {
+                                          if (v == true) {
+                                            _selected.add(empId);
+                                          } else {
+                                            _selected.remove(empId);
+                                          }
+                                        }),
                                 ),
                             ],
                           ),
@@ -1088,6 +1098,20 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
                       },
                     );
                   },
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _busy || _selected.isEmpty ? null : _assignSelected,
+                  style: FilledButton.styleFrom(backgroundColor: green),
+                  icon: const Icon(Icons.group_add_rounded),
+                  label: Text(
+                    _selected.isEmpty
+                        ? 'Chọn nhân viên để phân ca'
+                        : 'Phân ca cho ${_selected.length} nhân viên',
+                  ),
                 ),
               ),
             ],
@@ -1189,7 +1213,7 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
     });
 
     try {
-      await widget.repository.createShift(
+      final shiftId = await widget.repository.createShift(
         branchId: branchId,
         start: start,
         end: end,
@@ -1198,9 +1222,13 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✓ Đã tạo ca làm việc mới thành công!')),
+          const SnackBar(
+            content: Text(
+              '✓ Đã tạo ca. Hãy chọn nhân viên: nhân viên chỉ thấy ca sau khi được phân công.',
+            ),
+          ),
         );
-        Navigator.pop(context, true);
+        Navigator.pop(context, shiftId);
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);

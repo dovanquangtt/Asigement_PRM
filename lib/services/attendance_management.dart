@@ -301,6 +301,9 @@ extension AttendanceManagement on WorkforceRepository {
           whereArgs: [id],
         )).single;
       }
+      if (record['attendance_state'] == 'VOIDED') {
+        throw const AuthException('Công đã bị hủy. Hãy liên hệ quản lý.');
+      }
       final proposedIn =
           checkIn?.toUtc() ??
           (record['check_in_at'] == null

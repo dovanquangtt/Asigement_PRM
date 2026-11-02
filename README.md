@@ -4,6 +4,12 @@
 Đăng nhập bằng tài khoản được cấp hoặc Google; SQLite lưu tài khoản, quyền và dữ liệu
 nghiệp vụ riêng trên từng thiết bị. README này tổng hợp thông tin chức năng và frontend.
 
+## Tách frontend và backend
+
+- Frontend Flutter tiếp tục nằm ở thư mục gốc của repository.
+- Backend mới dùng Java 17, Spring Boot, PostgreSQL và Flyway tại [`backend/README.md`](backend/README.md).
+- Backend hiện là nền móng ban đầu; các nghiệp vụ Flutter vẫn dùng SQLite cục bộ cho đến khi từng API được chuyển và frontend được nối sang server.
+
 ## 1. Cài đặt và chạy
 
 Cần Flutter SDK, Android SDK và Java tương thích với cấu hình Gradle của project.
