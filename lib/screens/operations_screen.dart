@@ -14,6 +14,7 @@ import '../services/attendance_evidence.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import 'attendance_management_screen.dart';
+import 'manager_schedule_screen.dart' show AssignEmployeeModal;
 import 'payroll_checks_screen.dart';
 
 /// Ảnh mẫu dùng asset URI để không phụ thuộc đường dẫn máy tạo database.
@@ -260,7 +261,12 @@ class _OperationsPageState extends State<OperationsPage> {
   }
 
   Future<List<RowData>> load() => switch (widget.kind) {
-    'schedule' => manager ? r.allShifts() : r.shifts(),
+    'schedule' =>
+      manager
+          ? r.allShifts().then(
+              (rows) => rows.where((s) => s['status'] != 'cancelled').toList(),
+            )
+          : r.shifts(),
     'attendance' => r.attendanceHistory(),
     'attendance_review' => r.attendanceSubmissions(),
     'devices' => r.devices(),
@@ -481,10 +487,39 @@ class _OperationsPageState extends State<OperationsPage> {
     }
   }
 
+  /// Xóa (hủy) ca: nhân viên trong ca được thông báo và ca biến mất khỏi lịch của họ.
+  Future<void> deleteShift(int shiftId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Xóa ca làm?'),
+        content: const Text(
+          'Nhân viên đã được phân vào ca sẽ nhận thông báo và ca biến mất khỏi lịch của họ.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Xóa ca'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await action(
+      () => r.cancelShift(shiftId),
+      success: 'Đã xóa ca. Nhân viên trong ca đã được thông báo.',
+    );
+  }
+
   Widget tile(RowData row) {
     switch (widget.kind) {
       case 'schedule':
-        return ListTile(
+        final shiftTile = ListTile(
           title: Text(
             manager
                 ? '${row['branch_name']} • ${row['assigned_count']}/${row['required_staff']} người'
@@ -504,6 +539,27 @@ class _OperationsPageState extends State<OperationsPage> {
               ),
             ),
           ),
+        );
+        if (!manager) return shiftTile;
+        return Column(
+          children: [
+            shiftTile,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => deleteShift(row['id'] as int),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade200),
+                  ),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Xóa ca làm'),
+                ),
+              ),
+            ),
+          ],
         );
       case 'attendance_review':
         final snapshot = jsonDecode(
@@ -730,10 +786,25 @@ class _OperationsPageState extends State<OperationsPage> {
                       () => r.respondSwap(row['id'] as int, false),
                     ),
                   ],
+                  if (row['target_user_id'] == null)
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Text(
+                        'Người nhận chưa có tài khoản nên không thể đồng ý. Hãy từ chối yêu cầu này.',
+                      ),
+                    ),
                   if (manager && row['counterpart_status'] != 'accepted')
                     const Padding(
                       padding: EdgeInsets.all(8),
                       child: Text('Đang chờ người nhận đồng ý.'),
+                    ),
+                  if (manager &&
+                      row['target_user_id'] == null &&
+                      row['counterpart_status'] == 'pending')
+                    button(
+                      'Từ chối yêu cầu',
+                      () => r.respondSwap(row['id'] as int, false, review: true),
+                      success: 'Đã từ chối yêu cầu đổi ca.',
                     ),
                   if (manager && row['counterpart_status'] == 'accepted') ...[
                     button(
@@ -1080,18 +1151,20 @@ class _ShiftPageState extends State<ShiftPage> {
   }
 
   Future<void> assign() async {
-    final people = await r.employees();
-    if (!mounted) return;
-    await featureForm(context, 'Phân ca', [
-      InputSpec(
-        'employee',
-        'Nhân viên',
-        options: {
-          for (final e in people)
-            '${e['id']}': '${e['employee_code']} • ${e['full_name']}',
-        },
+    // Bảng toàn bộ nhân viên của chi nhánh, tích chọn nhiều người một lúc.
+    final assigned = await showDialog<bool>(
+      context: context,
+      builder: (_) => AssignEmployeeModal(
+        repository: r,
+        shiftId: widget.shiftId,
+        shiftTitle: 'Ca #${widget.shiftId}',
       ),
-    ], (v) => r.assignShift(widget.shiftId, int.parse(v['employee']!)));
+    );
+    if (assigned == true && mounted) {
+      setState(() {
+        loading = r.shiftDetail(widget.shiftId);
+      });
+    }
   }
 
   Future<void> swap(int own) async {

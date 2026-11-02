@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
+import '../services/system_notifier.dart';
 import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
@@ -200,7 +202,7 @@ class _WorkspaceState extends State<Workspace> {
     super.initState();
     repository = widget.repository ?? WorkforceRepository(widget.session);
     loading = load();
-    _pollNotifications();
+    SystemNotifier.instance.init().then((_) => _pollNotifications());
     _poller = Timer.periodic(
       const Duration(seconds: 5),
       (_) => _pollNotifications(),
@@ -225,30 +227,68 @@ class _WorkspaceState extends State<Workspace> {
       final ids = [for (final r in rows) r['id'] as int];
       final newest = ids.isEmpty ? 0 : ids.reduce((a, b) => a > b ? a : b);
       final last = _lastNotificationId;
+      final unreadRows = rows.where((r) => r['read_at'] == null).toList();
+      // Lần kiểm tra đầu tiên (vừa đăng nhập): báo tất cả thông báo chưa đọc.
       final fresh = last == null
-          ? const <RowData>[]
-          : rows
-                .where((r) => (r['id'] as int) > last && r['read_at'] == null)
-                .toList();
+          ? unreadRows
+          : unreadRows.where((r) => (r['id'] as int) > last).toList();
       setState(() {
         _lastNotificationId = newest;
-        unread = rows.where((r) => r['read_at'] == null).length;
+        unread = unreadRows.length;
       });
       if (fresh.isNotEmpty) {
-        final top = fresh.first;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                '${top['title']}: ${top['body']}'
-                '${fresh.length > 1 ? ' (+${fresh.length - 1} thông báo mới)' : ''}',
-              ),
-              action: SnackBarAction(label: 'Xem', onPressed: _openNotifications),
-            ),
-          );
+        _announce(fresh);
+        // Có phân ca / hủy ca / kết quả duyệt mới: tải lại màn hình hiện tại.
+        refresh();
       }
     } catch (_) {}
+  }
+
+  /// Thông báo nổi bật: rung, âm báo và banner nổi có nút "Xem".
+  void _announce(List<RowData> fresh) {
+    HapticFeedback.heavyImpact();
+    SystemSound.play(SystemSoundType.alert);
+    // Đẩy lên thanh thông báo của điện thoại (tối đa 5 thông báo mới nhất mỗi lần).
+    for (final n in fresh.take(5)) {
+      SystemNotifier.instance.show(
+        n['id'] as int,
+        '${n['title']}',
+        '${n['body']}',
+      );
+    }
+    final top = fresh.first;
+    final more = fresh.length > 1 ? '\n(+${fresh.length - 1} thông báo khác)' : '';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: green,
+          duration: const Duration(seconds: 10),
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Row(
+            children: [
+              const Icon(Icons.notifications_active, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${top['title']}\n${top['body']}$more',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'XEM',
+            textColor: Colors.white,
+            onPressed: _openNotifications,
+          ),
+        ),
+      );
   }
 
   Future<void> _openNotifications() async {

@@ -62,7 +62,7 @@ extension WorkforceOperations on WorkforceRepository {
       JOIN branches b ON b.id=s.branch_id
       LEFT JOIN shift_assignments a ON a.shift_id=s.id AND a.status<>'cancelled'
       LEFT JOIN employees e ON e.id=a.employee_id
-      ${branchId == null ? '' : 'WHERE s.branch_id=?'}
+      WHERE s.status<>'cancelled' ${branchId == null ? '' : 'AND s.branch_id=?'}
       GROUP BY s.id
       ORDER BY s.starts_at DESC, s.id DESC
     ''', branchId == null ? [] : [branchId]);
@@ -135,6 +135,7 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [shiftId],
       )).firstOrNull;
       if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      await _requireAttendanceBranch(tx, shift['branch_id'] as int);
       if (shift['status'] != 'scheduled') {
         throw const AuthException('Chỉ được bỏ phân công ca chưa bắt đầu.');
       }
@@ -183,9 +184,12 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [shiftId],
       )).firstOrNull;
       if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      await _requireAttendanceBranch(tx, shift['branch_id'] as int);
       if (shift['status'] == 'cancelled') return;
       if (shift['status'] != 'scheduled') {
-        throw const AuthException('Chỉ được hủy ca chưa bắt đầu.');
+        throw const AuthException(
+          'Ca đang diễn ra hoặc đã đóng, đã có dữ liệu chấm công/lương nên không thể xóa.',
+        );
       }
       if ((await tx.rawQuery(
         '''
@@ -245,6 +249,7 @@ extension WorkforceOperations on WorkforceRepository {
     final db = await _open();
     return db.transaction((tx) async {
       await _require(tx, 'shifts.manage');
+      await _requireAttendanceBranch(tx, branchId);
       final id = await tx.insert('shifts', {
         'branch_id': branchId,
         'starts_at': sqlTime(start),
@@ -303,6 +308,15 @@ extension WorkforceOperations on WorkforceRepository {
         whereArgs: [shiftId],
       )).firstOrNull;
       if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      await _requireAttendanceBranch(tx, shift['branch_id'] as int);
+      if ((await tx.query(
+        'shift_assignments',
+        columns: ['id'],
+        where: "shift_id=? AND employee_id=? AND status='assigned'",
+        whereArgs: [shiftId, employeeId],
+      )).isNotEmpty) {
+        throw const AuthException('Nhân viên đã được phân vào ca này.');
+      }
       await _available(tx, employeeId, shift);
       final count =
           (await tx.rawQuery(
@@ -692,13 +706,10 @@ extension WorkforceOperations on WorkforceRepository {
         s['longitude'] != null &&
         evidence.latitude != null &&
         evidence.longitude != null &&
-        evidence.accuracy != null &&
         evidence.latitude!.isFinite &&
         evidence.latitude!.abs() <= 90 &&
         evidence.longitude!.isFinite &&
-        evidence.longitude!.abs() <= 180 &&
-        evidence.accuracy!.isFinite &&
-        !evidence.mocked) {
+        evidence.longitude!.abs() <= 180) {
       final lat1 = (s['latitude'] as num).toDouble() * math.pi / 180;
       final lat2 = evidence.latitude! * math.pi / 180;
       final dl = lat2 - lat1;
@@ -715,10 +726,17 @@ extension WorkforceOperations on WorkforceRepository {
             math.sqrt((1 - a).toDouble().clamp(0, 1)),
           );
       distanceMeters = distance;
+      // Hợp lệ khi trong bán kính, độ chính xác đủ tốt và không phải vị trí giả.
+      final radius = (s['geofence_radius_m'] as num?)?.toInt() ?? 0;
+      final accuracy = evidence.accuracy;
       gpsValid =
-          distance <= (s['geofence_radius_m'] as int) &&
-          evidence.accuracy! >= 0 &&
-          evidence.accuracy! <= math.min(100, s['geofence_radius_m'] as int);
+          !evidence.mocked &&
+          radius > 0 &&
+          distance <= radius &&
+          accuracy != null &&
+          accuracy.isFinite &&
+          accuracy >= 0 &&
+          accuracy <= math.min(100, radius);
     }
     final wifi = evidence.bssid == null || evidence.ssid == null
         ? <RowData>[]
@@ -737,7 +755,10 @@ extension WorkforceOperations on WorkforceRepository {
         'Thiết bị chưa được quản lý duyệt',
       if (s['require_gps'] == 1 && !gpsValid)
         'GPS ngoài phạm vi, thiếu chính xác hoặc vị trí giả',
-      if (s['require_wifi'] == 1 && !wifiValid) 'Wi-Fi không đúng chi nhánh',
+      if (s['require_wifi'] == 1 && !wifiValid)
+        evidence.bssid == null || evidence.ssid == null
+            ? 'Không đọc được Wi-Fi (hãy kết nối Wi-Fi chi nhánh và bật vị trí)'
+            : 'Wi-Fi không đúng chi nhánh',
       if (clock.difference(evidence.collectedAt.toUtc()).abs() >
           const Duration(minutes: 2))
         'Dữ liệu xác thực đã quá hạn',
@@ -958,7 +979,7 @@ extension WorkforceOperations on WorkforceRepository {
     final me = await _me(db);
     final from = (await txOwnAssignment(db, assignmentId, me['id'] as int));
     return db.rawQuery(
-      "SELECT a.id,s.starts_at,s.ends_at,e.full_name FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id WHERE a.employee_id<>? AND a.status='assigned' AND s.status='scheduled' AND s.branch_id=? AND s.starts_at>? ORDER BY s.starts_at",
+      "SELECT a.id,s.starts_at,s.ends_at,e.full_name FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id JOIN users u ON u.id=e.user_id AND u.is_active=1 WHERE e.status='active' AND a.employee_id<>? AND a.status='assigned' AND s.status='scheduled' AND s.branch_id=? AND s.starts_at>? ORDER BY s.starts_at",
       [me['id'], from['branch_id'], sqlTime(DateTime.now())],
     );
   }
@@ -974,6 +995,24 @@ extension WorkforceOperations on WorkforceRepository {
     );
     if (rows.isEmpty) throw const AuthException('Phân ca không thuộc bạn.');
     return rows.single;
+  }
+
+  /// Chỉ nhân viên đang làm và có tài khoản đang hoạt động mới nhận/đồng ý đổi ca được.
+  Future<void> _requireAccount(DatabaseExecutor tx, int employeeId) async {
+    final rows = await tx.rawQuery(
+      "SELECT e.full_name FROM employees e JOIN users u ON u.id=e.user_id WHERE e.id=? AND e.status='active' AND u.is_active=1",
+      [employeeId],
+    );
+    if (rows.isNotEmpty) return;
+    final name = (await tx.query(
+      'employees',
+      columns: ['full_name'],
+      where: 'id=?',
+      whereArgs: [employeeId],
+    )).firstOrNull?['full_name'];
+    throw AuthException(
+      'Nhân viên ${name ?? ''} chưa có tài khoản hoạt động nên không thể đổi ca.',
+    );
   }
 
   Future<void> requestSwap(int from, int to, String reason) async {
@@ -998,6 +1037,7 @@ extension WorkforceOperations on WorkforceRepository {
           'Chỉ đổi ca tương lai với nhân viên khác cùng chi nhánh.',
         );
       }
+      await _requireAccount(tx, target['employee_id'] as int);
       if ((await tx.rawQuery(
         "SELECT id FROM shift_swap_requests WHERE status='pending' AND (from_assignment_id IN (?,?) OR to_assignment_id IN (?,?)) LIMIT 1",
         [from, to, from, to],
@@ -1115,6 +1155,8 @@ extension WorkforceOperations on WorkforceRepository {
         throw const AuthException('Người tham gia không được tự duyệt đổi ca.');
       }
       if (accept) {
+        await _requireAccount(tx, a['employee_id'] as int);
+        await _requireAccount(tx, b['employee_id'] as int);
         if (r['counterpart_status'] != 'accepted' ||
             a['status'] != 'assigned' ||
             b['status'] != 'assigned') {
@@ -1161,13 +1203,26 @@ extension WorkforceOperations on WorkforceRepository {
         }
         await tx.update(
           'shift_assignments',
-          {'employee_id': b['employee_id'], 'assigned_by': session.userId},
+          {
+            'employee_id': b['employee_id'],
+            'assigned_by': session.userId,
+            // Hai bên đã đồng ý đổi nên ca mới coi như đã được người nhận chấp nhận.
+            'response_status': 'accepted',
+            'responded_at': sqlTime(DateTime.now()),
+            'response_note': null,
+          },
           where: 'id=?',
           whereArgs: [a['id']],
         );
         await tx.update(
           'shift_assignments',
-          {'employee_id': a['employee_id'], 'assigned_by': session.userId},
+          {
+            'employee_id': a['employee_id'],
+            'assigned_by': session.userId,
+            'response_status': 'accepted',
+            'responded_at': sqlTime(DateTime.now()),
+            'response_note': null,
+          },
           where: 'id=?',
           whereArgs: [b['id']],
         );

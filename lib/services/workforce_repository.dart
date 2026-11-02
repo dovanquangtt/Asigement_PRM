@@ -162,7 +162,9 @@ class WorkforceRepository {
     return db.rawQuery(
       'SELECT v.*,b.name AS branch_name FROM v_shift_roster v '
       'JOIN branches b ON b.id=v.branch_id JOIN employees e ON e.id=v.employee_id '
-      '${managing ? '' : 'WHERE e.user_id=? '}ORDER BY v.starts_at DESC',
+      'JOIN shifts sh ON sh.id=v.shift_id '
+      "WHERE v.status<>'cancelled' AND sh.status<>'cancelled' "
+      '${managing ? '' : 'AND e.user_id=? '}ORDER BY v.starts_at DESC',
       managing ? [] : [session.userId],
     );
   }

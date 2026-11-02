@@ -109,6 +109,13 @@ class AttendanceSensors {
           ssid.endsWith('"')) {
         ssid = ssid.substring(1, ssid.length - 1);
       }
+      // Android trả giá trị giả khi thiếu quyền vị trí hoặc chưa kết nối Wi-Fi.
+      if (ssid == null || ssid.isEmpty || ssid.toLowerCase() == '<unknown ssid>') {
+        ssid = null;
+      }
+      if (bssid == null || bssid == '02:00:00:00:00:00' || bssid == '00:00:00:00:00:00') {
+        bssid = null;
+      }
     }
     return AttendanceEvidence(
       deviceIdentifier: identifier,

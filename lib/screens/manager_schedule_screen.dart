@@ -89,7 +89,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
   Future<void> _showAssignDialog(int shiftId, String shiftTitleText) async {
     final assigned = await showDialog<bool>(
       context: context,
-      builder: (_) => _AssignEmployeeModal(
+      builder: (_) => AssignEmployeeModal(
         repository: r,
         shiftId: shiftId,
         shiftTitle: shiftTitleText,
@@ -99,6 +99,52 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
     if (assigned == true && mounted) {
       _reload();
     }
+  }
+
+  /// Xóa (hủy) ca: nhân viên được phân vào ca nhận thông báo và ca biến mất khỏi lịch của họ.
+  Future<void> _deleteShift(int shiftId, String shiftTitleText) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Xóa ca làm?'),
+        content: Text(
+          'Ca "$shiftTitleText" sẽ bị xóa. Nhân viên đã được phân vào ca sẽ nhận thông báo và ca biến mất khỏi lịch của họ.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Xóa ca'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await r.cancelShift(shiftId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xóa ca. Nhân viên trong ca đã được thông báo.'),
+        ),
+      );
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không xóa được ca. Hãy thử lại.')),
+        );
+      }
+    }
+    if (mounted) _reload();
   }
 
   @override
@@ -838,6 +884,34 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                           ),
                         ],
                       ),
+                      if (shift['status'] != 'cancelled') ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _deleteShift(
+                              shiftId,
+                              '$title • ${startVn.day}/${startVn.month}',
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red.shade700,
+                              side: BorderSide(color: Colors.red.shade200),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text(
+                              'Xóa ca làm',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -851,8 +925,8 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
 }
 
 /// Modal Phân ca thông minh (hiển thị nhân viên khả dụng & xung đột)
-class _AssignEmployeeModal extends StatefulWidget {
-  const _AssignEmployeeModal({
+class AssignEmployeeModal extends StatefulWidget {
+  const AssignEmployeeModal({
     required this.repository,
     required this.shiftId,
     required this.shiftTitle,
@@ -863,20 +937,30 @@ class _AssignEmployeeModal extends StatefulWidget {
   final String shiftTitle;
 
   @override
-  State<_AssignEmployeeModal> createState() => _AssignEmployeeModalState();
+  State<AssignEmployeeModal> createState() => _AssignEmployeeModalState();
 }
 
-class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
+class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
   late Future<List<RowData>> _loading;
   String _searchQuery = '';
   bool _busy = false;
   final Set<int> _selected = {};
+  List<int> _visibleAvailable = [];
 
   @override
   void initState() {
     super.initState();
     _reload();
   }
+
+  void _toggleAll() => setState(() {
+    if (_visibleAvailable.isNotEmpty &&
+        _visibleAvailable.every(_selected.contains)) {
+      _selected.removeAll(_visibleAvailable);
+    } else {
+      _selected.addAll(_visibleAvailable);
+    }
+  });
 
   void _reload() {
     setState(() {
@@ -967,7 +1051,14 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
               ),
-              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _busy ? null : _toggleAll,
+                  icon: const Icon(Icons.done_all, size: 18),
+                  label: const Text('Chọn / bỏ chọn tất cả'),
+                ),
+              ),
 
               Expanded(
                 child: FutureBuilder<List<RowData>>(
@@ -994,6 +1085,10 @@ class _AssignEmployeeModalState extends State<_AssignEmployeeModal> {
                       return name.contains(_searchQuery) || code.contains(_searchQuery);
                     }).toList();
 
+                    _visibleAvailable = [
+                      for (final e in filtered)
+                        if ((e['is_available'] as bool?) ?? false) e['id'] as int,
+                    ];
                     if (filtered.isEmpty) {
                       return const Center(
                         child: Text(

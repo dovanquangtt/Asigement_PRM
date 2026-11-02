@@ -139,9 +139,9 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Hủy ca làm?'),
+        title: const Text('Xóa ca làm?'),
         content: const Text(
-          'Nhân viên đã được phân vào ca sẽ nhận thông báo hủy.',
+          'Ca sẽ bị xóa. Nhân viên đã được phân vào ca sẽ nhận thông báo và ca biến mất khỏi lịch của họ.',
         ),
         actions: [
           TextButton(
@@ -150,7 +150,7 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Hủy ca'),
+            child: const Text('Xóa ca'),
           ),
         ],
       ),
@@ -161,7 +161,7 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     });
     try {
       await repo.cancelShift((shift['id'] as num).toInt());
-      if (mounted) _snack('Đã hủy ca.');
+      if (mounted) _snack('Đã xóa ca. Nhân viên trong ca đã được thông báo.');
       await _reload();
     } catch (e) {
       if (mounted) _snack(scheduleError(e));
@@ -236,6 +236,7 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     final weekEnd = weekStart.add(const Duration(days: 7));
     final shifts =
         all.where((s) {
+          if (s['status'] == 'cancelled') return false; // ca đã xóa
           final d = vnTime(s['starts_at']);
           return !d.isBefore(weekStart) && d.isBefore(weekEnd);
         }).toList()..sort(
@@ -313,7 +314,41 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     final names = '${s['assigned_staff_names'] ?? ''}';
     final title = '${_dm(start)} ${_hm(start)}–${_hm(end)}';
     return Card(
-      child: ListTile(
+      child: Column(
+        children: [
+          _shiftTile(s, id, cancelled, names, title, start, end),
+          if (!cancelled)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: Key('delete-shift-$id'),
+                  onPressed: busy ? null : () => _cancel(s),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade200),
+                  ),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Xóa ca làm'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shiftTile(
+    Map<String, dynamic> s,
+    int id,
+    bool cancelled,
+    String names,
+    String title,
+    DateTime start,
+    DateTime end,
+  ) {
+    return ListTile(
         key: Key('shift-$id'),
         leading: Icon(cancelled ? Icons.event_busy : Icons.schedule),
         title: Text(
@@ -336,10 +371,9 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
                     v == 'cancel' ? _cancel(s) : _openAssign(id, title),
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'assign', child: Text('Phân nhân viên')),
-                  PopupMenuItem(value: 'cancel', child: Text('Hủy ca')),
+                  PopupMenuItem(value: 'cancel', child: Text('Xóa ca')),
                 ],
               ),
-      ),
     );
   }
 }
