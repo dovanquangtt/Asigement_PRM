@@ -81,11 +81,7 @@ class EmployeeShiftRowCard extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: TextStyle(
-        color: color,
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
-      ),
+      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
     ),
   );
 
@@ -93,7 +89,7 @@ class EmployeeShiftRowCard extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F3F4),
+        color: const Color(0xFFF1F8F7),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -156,7 +152,7 @@ class EmployeeShiftRowCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFE6EAE8)),
+        side: const BorderSide(color: Color(0xFFD5E7E4)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),

@@ -79,7 +79,7 @@ void main() {
         );
         expect(
           (await db.rawQuery('PRAGMA user_version')).single.values.single,
-          7,
+          8,
         );
         expect(
           (await db.query(
@@ -94,7 +94,7 @@ void main() {
           (await db.rawQuery(
             "SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
           )).single['n'],
-          34,
+          36,
         );
         expect(await db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
         expect(

@@ -350,31 +350,31 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
     DateTime end,
   ) {
     return ListTile(
-        key: Key('shift-$id'),
-        leading: Icon(cancelled ? Icons.event_busy : Icons.schedule),
-        title: Text(
-          '$title${cancelled ? '  (đã hủy)' : ''}',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            decoration: cancelled ? TextDecoration.lineThrough : null,
-          ),
+      key: Key('shift-$id'),
+      leading: Icon(cancelled ? Icons.event_busy : Icons.schedule),
+      title: Text(
+        '$title${cancelled ? '  (đã hủy)' : ''}',
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          decoration: cancelled ? TextDecoration.lineThrough : null,
         ),
-        subtitle: Text(
-          '${s['branch_name']} · ${s['assigned_count']}/${s['required_staff']} nhân viên'
-          '${names.isEmpty ? ' · chưa phân ai' : '\n$names'}',
-        ),
-        isThreeLine: names.isNotEmpty,
-        onTap: cancelled || busy ? null : () => _openAssign(id, title),
-        trailing: cancelled
-            ? null
-            : PopupMenuButton<String>(
-                onSelected: (v) =>
-                    v == 'cancel' ? _cancel(s) : _openAssign(id, title),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'assign', child: Text('Phân nhân viên')),
-                  PopupMenuItem(value: 'cancel', child: Text('Xóa ca')),
-                ],
-              ),
+      ),
+      subtitle: Text(
+        '${s['branch_name']} · ${s['assigned_count']}/${s['required_staff']} nhân viên'
+        '${names.isEmpty ? ' · chưa phân ai' : '\n$names'}',
+      ),
+      isThreeLine: names.isNotEmpty,
+      onTap: cancelled || busy ? null : () => _openAssign(id, title),
+      trailing: cancelled
+          ? null
+          : PopupMenuButton<String>(
+              onSelected: (v) =>
+                  v == 'cancel' ? _cancel(s) : _openAssign(id, title),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'assign', child: Text('Phân nhân viên')),
+                PopupMenuItem(value: 'cancel', child: Text('Xóa ca')),
+              ],
+            ),
     );
   }
 }

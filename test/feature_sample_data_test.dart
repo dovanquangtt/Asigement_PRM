@@ -106,7 +106,7 @@ void main() {
     },
   );
   test(
-    'All 34 bundled tables have data and all five views are readable',
+    'All 36 bundled tables have data and all five views are readable',
     () async {
       final f = await DatabaseFixture.open(
         keepSampleUsers: true,
@@ -116,7 +116,7 @@ void main() {
         final tables = await f.db.rawQuery(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         );
-        expect(tables, hasLength(34));
+        expect(tables, hasLength(36));
         for (final table in tables) {
           final name = table['name'];
           final count =
@@ -195,7 +195,7 @@ void main() {
       final manager = await repo(f, 'manager', 'Manager@12345');
       final employee = await repo(f, 'employee', 'Employee@12345');
       expect(await manager.payslips(), hasLength(6));
-      expect(await employee.payslips(), hasLength(2));
+      expect(await employee.payslips(), hasLength(1));
       final open =
           (await f.db.query(
                 'payroll_periods',

@@ -509,20 +509,6 @@ Future<bool> installFeatureSamples(
       where: 'id=?',
       whereArgs: [approvedRecord],
     );
-    for (final event in [
-      ('employee', 3, 'Hoàn thành tốt ca làm'),
-      ('employee', -1, 'Đi muộn trong tình huống mẫu'),
-      ('manager', 5, 'Điều phối ca tốt'),
-      ('admin', 2, 'Hỗ trợ đội ngũ'),
-    ]) {
-      await tx.insert('star_events', {
-        'employee_id': people[event.$1]!['id'],
-        'stars_delta': event.$2,
-        'reason': '[DEMO] ${event.$3}',
-        'awarded_by': event.$1 == 'admin' ? manager : admin,
-        'created_at': _stamp(now),
-      });
-    }
     const steps = [
       'Kiểm tra kỳ lương và hồ sơ',
       'Kiểm tra hợp đồng và đơn giá',
@@ -639,6 +625,25 @@ Future<bool> installFeatureSamples(
         });
       }
     }
+    // Một báo sai đã được xử lý để màn "Báo sai" của nhân viên có dữ liệu thử.
+    final paidSlip = (await tx.rawQuery(
+      "SELECT p.id,p.employee_id FROM payslips p JOIN payroll_periods pp ON pp.id=p.period_id WHERE pp.code='DEMO_PAID' AND p.employee_id=?",
+      [people['employee']!['id']],
+    )).first;
+    final dispute = await tx.insert('payroll_disputes', {
+      'payslip_id': paidSlip['id'],
+      'employee_id': paidSlip['employee_id'],
+      'message': '[DEMO] Phụ cấp ăn tháng này chưa đủ số ngày công.',
+      'status': 'resolved',
+      'created_at': _stamp(at(historyEnd, 20)),
+      'resolved_by': manager,
+      'resolved_at': _stamp(at(historyEnd, 21)),
+      'resolution_note': '[DEMO] Đã kiểm tra lại, số liệu đúng.',
+    });
+    await tx.insert('payroll_dispute_items', {
+      'dispute_id': dispute,
+      'item_key': 'allowance',
+    });
     for (final message in [
       (
         'Lịch ca DEMO đã sẵn sàng',

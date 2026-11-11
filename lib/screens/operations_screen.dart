@@ -14,24 +14,31 @@ import '../services/attendance_evidence.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import 'attendance_management_screen.dart';
+import 'employee_attendance_history_screen.dart';
+import 'shift_swap_screen.dart';
 import 'manager_schedule_screen.dart' show AssignEmployeeModal;
 import 'payroll_checks_screen.dart';
+import 'payroll/payroll_disputes_screen.dart';
 
 /// Ảnh mẫu dùng asset URI để không phụ thuộc đường dẫn máy tạo database.
 /// Ảnh camera thật vẫn được đọc từ thư mục riêng của app trên thiết bị.
-Widget closurePhotoPreview(RowData photo) {
+Widget closurePhotoPreview(
+  RowData photo, {
+  double height = 160,
+  bool caption = true,
+}) {
   final path = photo['file_url'].toString();
   final Widget preview;
   if (path.startsWith('asset:')) {
     preview = Image.asset(
       path.substring(6),
-      height: 160,
+      height: height,
       errorBuilder: (_, e, s) => const Text('Không đọc được ảnh minh họa.'),
     );
   } else if (File(path).existsSync()) {
     preview = Image.file(
       File(path),
-      height: 160,
+      height: height,
       errorBuilder: (_, e, s) => const Text('Không đọc được ảnh.'),
     );
   } else {
@@ -40,7 +47,7 @@ Widget closurePhotoPreview(RowData photo) {
   return Column(
     children: [
       preview,
-      if (photo['caption'] != null)
+      if (caption && photo['caption'] != null)
         Padding(
           padding: const EdgeInsets.all(8),
           child: Text(
@@ -245,14 +252,10 @@ class _OperationsPageState extends State<OperationsPage> {
   late Future<List<RowData>> loading;
   static const titles = {
     'schedule': 'Quản lý ca & lịch ca',
-    'attendance': 'Lịch sử điểm danh',
     'attendance_review': 'Duyệt điểm danh',
     'devices': 'Duyệt thiết bị',
     'payroll': 'Kỳ lương & 6 bước',
-    'swaps': 'Yêu cầu đổi ca',
     'leave_review': 'Duyệt nghỉ phép',
-    'stars': 'Sao nhân viên',
-    'closures': 'Báo cáo đóng ca',
     'branches': 'Cấu hình điểm danh',
   };
   @override
@@ -268,14 +271,10 @@ class _OperationsPageState extends State<OperationsPage> {
               (rows) => rows.where((s) => s['status'] != 'cancelled').toList(),
             )
           : r.shifts(),
-    'attendance' => r.attendanceHistory(),
     'attendance_review' => r.attendanceSubmissions(),
     'devices' => r.devices(),
     'payroll' => r.periods(),
-    'swaps' => r.swaps(),
     'leave_review' => r.leaveRequestsForReview(),
-    'stars' => r.stars(),
-    'closures' => r.closures(),
     'branches' => r.branches(),
     _ => r.shifts(),
   };
@@ -319,6 +318,7 @@ class _OperationsPageState extends State<OperationsPage> {
     onPressed: () => action(work, success: success),
     child: Text(label),
   );
+
   /// Duyệt/từ chối yêu cầu nghỉ phép; từ chối bắt buộc có lý do.
   Future<void> reviewLeave(RowData row, bool approve) async {
     await featureForm(
@@ -401,7 +401,18 @@ class _OperationsPageState extends State<OperationsPage> {
         InputSpec('code', 'Mã kỳ lương'),
         InputSpec('start', 'Từ ngày YYYY-MM-DD'),
         InputSpec('end', 'Đến ngày YYYY-MM-DD'),
-        InputSpec('multiplier', 'Hệ số trả lương tăng ca (>=1)', number: true),
+        InputSpec(
+          'multiplier',
+          'Hệ số trả lương tăng ca (>=1)',
+          value: '1.5',
+          number: true,
+        ),
+        InputSpec(
+          'insurance',
+          'Bảo hiểm (% lương cơ bản)',
+          value: '8',
+          number: true,
+        ),
       ],
       (v) async {
         await r.createPeriod(
@@ -409,10 +420,72 @@ class _OperationsPageState extends State<OperationsPage> {
           DateTime.parse('${v['start']}T00:00:00Z'),
           DateTime.parse('${v['end']}T00:00:00Z'),
           double.parse(v['multiplier']!),
+          insuranceRateBp: (double.parse(v['insurance']!) * 100).round(),
         );
       },
     );
     await refresh();
+  }
+
+  /// Sửa kỳ lương chưa chốt (mã, ngày, hệ số tăng ca, % bảo hiểm); phải tính lại sau khi sửa.
+  Future<void> editPeriod(RowData p) async {
+    if (!mounted) return;
+    await featureForm(
+      context,
+      'Sửa kỳ lương',
+      [
+        InputSpec('code', 'Mã kỳ lương', value: '${p['code']}'),
+        InputSpec('start', 'Từ ngày YYYY-MM-DD', value: '${p['starts_on']}'),
+        InputSpec('end', 'Đến ngày YYYY-MM-DD', value: '${p['ends_on']}'),
+        InputSpec(
+          'multiplier',
+          'Hệ số trả lương tăng ca (>=1)',
+          value: '${p['overtime_multiplier'] ?? 1.5}',
+          number: true,
+        ),
+        InputSpec(
+          'insurance',
+          'Bảo hiểm (% lương cơ bản)',
+          value: '${((p['insurance_rate_bp'] as int? ?? 800) / 100)}',
+          number: true,
+        ),
+      ],
+      (v) => r.updatePeriod(
+        p['id'] as int,
+        code: v['code']!,
+        start: DateTime.parse('${v['start']}T00:00:00Z'),
+        end: DateTime.parse('${v['end']}T00:00:00Z'),
+        multiplier: double.parse(v['multiplier']!),
+        insuranceRateBp: (double.parse(v['insurance']!) * 100).round(),
+      ),
+    );
+    await refresh();
+  }
+
+  Future<void> deletePeriod(RowData p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Xóa kỳ ${p['code']}?'),
+        content: const Text('Chỉ xóa được kỳ chưa có phiếu lương.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await action(
+        () => r.deletePeriod(p['id'] as int),
+        success: 'Đã xóa kỳ lương.',
+      );
+    }
   }
 
   Future<void> branchConfig(RowData b) async {
@@ -652,19 +725,6 @@ class _OperationsPageState extends State<OperationsPage> {
               ),
           ],
         );
-      case 'attendance':
-        return ListTile(
-          title: Text(
-            '${row['full_name']} • ${row['event_type'] == 'check_in' ? 'Vào ca' : 'Ra ca'}',
-          ),
-          subtitle: Text(
-            '${localTime(row['occurred_at'])}\n${row['result'] == 'pending_review'
-                ? 'Chờ Admin duyệt'
-                : row['result'] == 'accepted'
-                ? 'Đã ghi công'
-                : 'Bị từ chối'} ${row['review_note'] ?? row['rejection_reason'] ?? ''}',
-          ),
-        );
       case 'devices':
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -775,6 +835,20 @@ class _OperationsPageState extends State<OperationsPage> {
                       );
                     },
                   ),
+                if (manager && !locked)
+                  TextButton(
+                    key: ValueKey('period-edit-${row['id']}'),
+                    onPressed: () => action(() => editPeriod(row)),
+                    child: const Text('Sửa kỳ'),
+                  ),
+                if (manager &&
+                    !locked &&
+                    (row['payslip_count'] as int? ?? 0) == 0)
+                  TextButton(
+                    key: ValueKey('period-delete-${row['id']}'),
+                    onPressed: () => deletePeriod(row),
+                    child: const Text('Xóa kỳ'),
+                  ),
                 if (manager && row['status'] == 'calculating')
                   button(
                     'Duyệt kỳ lương',
@@ -841,107 +915,6 @@ class _OperationsPageState extends State<OperationsPage> {
               ),
           ],
         );
-      case 'swaps':
-        return Column(
-          children: [
-            ListTile(
-              title: Text('${row['from_name']} ↔ ${row['to_name']}'),
-              subtitle: Text(
-                '${localTime(row['from_start'])} ↔ ${localTime(row['to_start'])}\n${row['reason']}\nNgười nhận: ${row['counterpart_status']} • ${row['status']}',
-              ),
-            ),
-            if (row['status'] == 'pending')
-              Wrap(
-                children: [
-                  if (row['target_user_id'] == r.session.userId &&
-                      row['counterpart_status'] == 'pending') ...[
-                    button(
-                      'Đồng ý',
-                      () => r.respondSwap(row['id'] as int, true),
-                    ),
-                    button(
-                      'Từ chối',
-                      () => r.respondSwap(row['id'] as int, false),
-                    ),
-                  ],
-                  if (row['target_user_id'] == null)
-                    const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text(
-                        'Người nhận chưa có tài khoản nên không thể đồng ý. Hãy từ chối yêu cầu này.',
-                      ),
-                    ),
-                  if (manager && row['counterpart_status'] != 'accepted')
-                    const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Text('Đang chờ người nhận đồng ý.'),
-                    ),
-                  if (manager &&
-                      row['target_user_id'] == null &&
-                      row['counterpart_status'] == 'pending')
-                    button(
-                      'Từ chối yêu cầu',
-                      () => r.respondSwap(row['id'] as int, false, review: true),
-                      success: 'Đã từ chối yêu cầu đổi ca.',
-                    ),
-                  if (manager && row['counterpart_status'] == 'accepted') ...[
-                    button(
-                      'Duyệt đổi',
-                      () => r.respondSwap(row['id'] as int, true, review: true),
-                      success:
-                          'Đã duyệt đổi ca. Đã gửi thông báo cho nhân viên.',
-                    ),
-                    button(
-                      'Không duyệt',
-                      () =>
-                          r.respondSwap(row['id'] as int, false, review: true),
-                      success:
-                          'Đã từ chối đổi ca. Đã gửi thông báo cho nhân viên.',
-                    ),
-                  ],
-                ],
-              ),
-          ],
-        );
-      case 'stars':
-        return ListTile(
-          leading: TweenAnimationBuilder<double>(
-            key: ValueKey('${row['employee_id']}_${row['total_stars']}'),
-            tween: Tween(begin: 0.4, end: 1),
-            duration: const Duration(milliseconds: 600),
-            builder: (_, scale, child) =>
-                Transform.scale(scale: scale, child: child),
-            child: const Icon(Icons.star, color: Colors.amber),
-          ),
-          title: Text('${row['full_name']}'),
-          subtitle: Text('${row['total_stars']} sao'),
-        );
-      case 'closures':
-        return Column(
-          children: [
-            ListTile(
-              title: Text('${row['full_name']} • ${row['status']}'),
-              subtitle: Text(
-                '${row['note']}\n${localTime(row['submitted_at'])}',
-              ),
-            ),
-            for (final photo in row['photos'] as List<RowData>)
-              closurePhotoPreview(photo),
-            if (manager && row['status'] == 'submitted')
-              Wrap(
-                children: [
-                  button(
-                    'Duyệt',
-                    () => r.reviewClosure(row['id'] as int, true),
-                  ),
-                  button(
-                    'Từ chối',
-                    () => r.reviewClosure(row['id'] as int, false),
-                  ),
-                ],
-              ),
-          ],
-        );
       default:
         return ListTile(
           title: Text('${row['name']}'),
@@ -983,12 +956,24 @@ class _OperationsPageState extends State<OperationsPage> {
                   icon: const Icon(Icons.add),
                   label: const Text('Tạo ca làm'),
                 ),
-              if (manager && widget.kind == 'payroll')
+              if (manager && widget.kind == 'payroll') ...[
                 FilledButton.icon(
                   onPressed: () => action(createPeriod),
                   icon: const Icon(Icons.add),
                   label: const Text('Tạo kỳ lương'),
                 ),
+                OutlinedButton.icon(
+                  key: const Key('open-disputes'),
+                  onPressed: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => PayrollDisputesScreen(repository: r),
+                    ),
+                  ),
+                  icon: const Icon(Icons.flag_outlined),
+                  label: const Text('Báo sai của nhân viên'),
+                ),
+              ],
               if (s.data!.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(20),
@@ -1246,34 +1231,25 @@ class _ShiftPageState extends State<ShiftPage> {
         utcTime(shift['starts_at']).isBefore(DateTime.now().toUtc())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ca này đã bắt đầu hoặc đã kết thúc nên không thể đổi.'),
-        ),
-      );
-      return;
-    }
-    final options = await r.swapOptions(own);
-    if (!mounted) return;
-    if (options.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
           content: Text(
-            'Chưa có nhân viên nào cùng chi nhánh có ca sắp tới để đổi.',
+            'Ca này đã bắt đầu hoặc đã kết thúc nên không thể đổi.',
           ),
         ),
       );
       return;
     }
-    await featureForm(context, 'Gửi yêu cầu đổi ca', [
-      InputSpec(
-        'target',
-        'Ca muốn đổi',
-        options: {
-          for (final a in options)
-            '${a['id']}': '${a['full_name']} • ${localTime(a['starts_at'])}',
-        },
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ShiftSwapScreen(repository: r, initialAssignmentId: own),
       ),
-      const InputSpec('reason', 'Lý do'),
-    ], (v) => r.requestSwap(own, int.parse(v['target']!), v['reason']!));
+    );
+    if (mounted) {
+      setState(() {
+        loading = r.shiftDetail(widget.shiftId);
+      });
+    }
   }
 
   String _shiftTitle(DateTime start) {
@@ -1499,7 +1475,7 @@ class _ShiftPageState extends State<ShiftPage> {
                       leading: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0F5EA),
+                          color: const Color(0xFFF1F8F7),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -1601,7 +1577,7 @@ class _ShiftPageState extends State<ShiftPage> {
                             CircleAvatar(
                               backgroundColor: isMe
                                   ? green
-                                  : const Color(0xFFE8EDE7),
+                                  : const Color(0xFFD5E7E4),
                               foregroundColor: isMe ? Colors.white : ink,
                               radius: 20,
                               child: Text(
@@ -2075,9 +2051,8 @@ class _AttendancePageState extends State<AttendancePage> {
               : () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => OperationsPage(
+                    builder: (_) => EmployeeAttendanceHistoryScreen(
                       repository: widget.repository,
-                      kind: 'attendance',
                     ),
                   ),
                 ),
@@ -2268,17 +2243,34 @@ class _PayDetailPageState extends State<PayDetailPage> {
     loading = widget.repository.payslipDetail(widget.id);
   }
 
-  Future<void> add() async {
+  Future<void> removeItem(RowData item) async {
+    try {
+      await widget.repository.removePayItem(widget.id, '${item['code']}');
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+    if (mounted) {
+      setState(() {
+        loading = widget.repository.payslipDetail(widget.id);
+      });
+    }
+  }
+
+  Future<void> add({RowData? item}) async {
     await featureForm(
       context,
-      'Khoản cộng/trừ',
-      const [
-        InputSpec('code', 'Mã khoản'),
-        InputSpec('name', 'Tên khoản'),
+      item == null ? 'Khoản cộng/trừ' : 'Sửa khoản cộng/trừ',
+      [
+        InputSpec('code', 'Mã khoản', value: '${item?['code'] ?? ''}'),
+        InputSpec('name', 'Tên khoản', value: '${item?['name'] ?? ''}'),
         InputSpec(
           'type',
           'Loại',
-          options: {
+          value: '${item?['item_type'] ?? ''}',
+          options: const {
             'allowance': 'Phụ cấp',
             'bonus': 'Thưởng',
             'deduction': 'Khấu trừ',
@@ -2286,7 +2278,12 @@ class _PayDetailPageState extends State<PayDetailPage> {
             'insurance': 'Bảo hiểm',
           },
         ),
-        InputSpec('amount', 'Số tiền VND', number: true),
+        InputSpec(
+          'amount',
+          'Số tiền VND',
+          value: '${item?['amount_vnd'] ?? ''}',
+          number: true,
+        ),
       ],
       (v) => widget.repository.addPayItem(
         widget.id,
@@ -2378,10 +2375,35 @@ class _PayDetailPageState extends State<PayDetailPage> {
             money('Lương thường', vnd(pay['base_pay_vnd'])),
             money('Lương tăng ca', vnd(pay['overtime_pay_vnd'])),
             for (final item in pay['items'] as List<RowData>)
-              money(
-                '${item['name']} (${itemTypeLabel(item['item_type'])})',
-                vnd(item['amount_vnd']),
-              ),
+              if (widget.repository.session.role != 'Nhân viên' &&
+                  pay['status'] == 'draft')
+                ListTile(
+                  key: ValueKey('item-${item['code']}'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    '${item['name']} (${itemTypeLabel(item['item_type'])})',
+                  ),
+                  subtitle: Text(vnd(item['amount_vnd'])),
+                  trailing: Wrap(
+                    children: [
+                      IconButton(
+                        tooltip: 'Sửa khoản',
+                        onPressed: () => add(item: item),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                      IconButton(
+                        tooltip: 'Xóa khoản',
+                        onPressed: () => removeItem(item),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                money(
+                  '${item['name']} (${itemTypeLabel(item['item_type'])})',
+                  vnd(item['amount_vnd']),
+                ),
             money('Tổng thu nhập', vnd(pay['gross_pay_vnd'])),
             money('Tổng khấu trừ', vnd(pay['deductions_vnd'])),
             money('Thực lĩnh', vnd(pay['net_pay_vnd']), bold: true),

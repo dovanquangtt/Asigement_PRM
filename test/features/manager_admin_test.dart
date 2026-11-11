@@ -19,11 +19,12 @@ import 'package:quanlinhansunhahang/features/manager/presentation/manager_dashbo
 
 typedef Handler = Future<http.Response> Function(http.Request request);
 
-http.Response jsonResponse(Object body, [int status = 200]) => http.Response.bytes(
-  utf8.encode(jsonEncode(body)),
-  status,
-  headers: {'content-type': 'application/json; charset=utf-8'},
-);
+http.Response jsonResponse(Object body, [int status = 200]) =>
+    http.Response.bytes(
+      utf8.encode(jsonEncode(body)),
+      status,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
 
 class Fake {
   Fake(this.handler) {
@@ -90,7 +91,10 @@ Map<String, dynamic> summaryJson({bool admin = false}) => {
   if (admin) 'totalShifts': 14,
 };
 
-Map<String, dynamic> detailJson({String status = 'IN_PROGRESS', bool pending = true}) => {
+Map<String, dynamic> detailJson({
+  String status = 'IN_PROGRESS',
+  bool pending = true,
+}) => {
   'item': {'attendanceId': 11},
   'employee': employee(),
   'shift': shift(),
@@ -122,12 +126,21 @@ Map<String, dynamic> detailJson({String status = 'IN_PROGRESS', bool pending = t
       'longitude': 106.69,
       'accuracyMeters': 8,
       'distanceMeters': 23.4,
-      'verification': {'gps': 'VERIFIED', 'device': 'VERIFIED', 'wifi': 'UNKNOWN'},
+      'verification': {
+        'gps': 'VERIFIED',
+        'device': 'VERIFIED',
+        'wifi': 'UNKNOWN',
+      },
     },
   ],
   'exceptions': ['Check-in chờ duyệt'],
   'auditLog': [
-    {'action': 'attendance.submit', 'actorName': 'Nguyễn Văn A', 'at': '2026-10-29T01:05:00Z', 'detail': null},
+    {
+      'action': 'attendance.submit',
+      'actorName': 'Nguyễn Văn A',
+      'at': '2026-10-29T01:05:00Z',
+      'detail': null,
+    },
   ],
 };
 
@@ -139,75 +152,90 @@ void bigScreen(WidgetTester tester) {
 
 void main() {
   group('repositories', () {
-    test('manager list builds the query, omits empty filters and parses the page', () async {
-      late Uri seen;
-      final fake = Fake((r) async {
-        seen = r.url;
-        return jsonResponse(page([row()], pages: 3));
-      });
-      final repo = ManagerAttendanceRepository(fake.client);
-      final result = await repo.list(
-        date: DateTime(2026, 10, 29),
-        status: 'LATE',
-        q: ' an ',
-        shiftId: 5,
-        page: 1,
-      );
-      expect(seen.path, '/api/manager/attendance');
-      expect(seen.queryParameters, {
-        'date': '2026-10-29',
-        'shiftId': '5',
-        'status': 'LATE',
-        'q': 'an',
-        'page': '1',
-        'size': '20',
-      });
-      expect(result.items.single.employee.fullName, 'Nguyễn Văn A');
-      expect(result.items.single.gps, 'VERIFIED');
-      expect(result.hasNext, isTrue);
-    });
+    test(
+      'manager list builds the query, omits empty filters and parses the page',
+      () async {
+        late Uri seen;
+        final fake = Fake((r) async {
+          seen = r.url;
+          return jsonResponse(page([row()], pages: 3));
+        });
+        final repo = ManagerAttendanceRepository(fake.client);
+        final result = await repo.list(
+          date: DateTime(2026, 10, 29),
+          status: 'LATE',
+          q: ' an ',
+          shiftId: 5,
+          page: 1,
+        );
+        expect(seen.path, '/api/manager/attendance');
+        expect(seen.queryParameters, {
+          'date': '2026-10-29',
+          'shiftId': '5',
+          'status': 'LATE',
+          'q': 'an',
+          'page': '1',
+          'size': '20',
+        });
+        expect(result.items.single.employee.fullName, 'Nguyễn Văn A');
+        expect(result.items.single.gps, 'VERIFIED');
+        expect(result.hasNext, isTrue);
+      },
+    );
 
-    test('admin repositories use admin paths; summary exposes admin totals', () async {
-      final paths = <String>[];
-      final fake = Fake((r) async {
-        paths.add('${r.method} ${r.url.path}');
-        if (r.url.path.endsWith('/summary')) return jsonResponse(summaryJson(admin: true));
-        return jsonResponse(page([]));
-      });
-      final repo = ManagerAttendanceRepository(fake.client, admin: true);
-      final s = await repo.summary(date: DateTime(2026, 10, 29), branchId: 2);
-      await repo.exceptions(date: DateTime(2026, 10, 29));
-      expect(paths, [
-        'GET /api/admin/attendance/summary',
-        'GET /api/admin/attendance/exceptions',
-      ]);
-      expect(s.totalBranches, 2);
-      expect(s.totalShifts, 14);
-      expect(s.notCheckedIn, 3);
-    });
+    test(
+      'admin repositories use admin paths; summary exposes admin totals',
+      () async {
+        final paths = <String>[];
+        final fake = Fake((r) async {
+          paths.add('${r.method} ${r.url.path}');
+          if (r.url.path.endsWith('/summary'))
+            return jsonResponse(summaryJson(admin: true));
+          return jsonResponse(page([]));
+        });
+        final repo = ManagerAttendanceRepository(fake.client, admin: true);
+        final s = await repo.summary(date: DateTime(2026, 10, 29), branchId: 2);
+        await repo.exceptions(date: DateTime(2026, 10, 29));
+        expect(paths, [
+          'GET /api/admin/attendance/summary',
+          'GET /api/admin/attendance/exceptions',
+        ]);
+        expect(s.totalBranches, 2);
+        expect(s.totalShifts, 14);
+        expect(s.notCheckedIn, 3);
+      },
+    );
 
-    test('review, edit and void call the existing endpoints with a reason', () async {
-      final calls = <String, Object?>{};
-      final fake = Fake((r) async {
-        calls['${r.method} ${r.url.path}'] = jsonDecode(r.body);
-        return http.Response('', 204);
-      });
-      final repo = ManagerAttendanceRepository(fake.client);
-      await repo.reviewException(99, approve: false, note: ' sai wifi ');
-      await repo.editTimes(
-        11,
-        checkIn: DateTime.utc(2026, 10, 29, 1),
-        reason: ' quên ',
-      );
-      await repo.voidAttendance(11, reason: 'nghỉ');
-      expect(calls['POST /api/attendance/submissions/99/review'], {'approve': false, 'note': 'sai wifi'});
-      expect(calls['POST /api/attendance/assignments/11/admin-edit'], {
-        'checkIn': '2026-10-29T01:00:00.000Z',
-        'checkOut': null,
-        'reason': 'quên',
-      });
-      expect(calls['POST /api/attendance/assignments/11/void'], {'reason': 'nghỉ'});
-    });
+    test(
+      'review, edit and void call the existing endpoints with a reason',
+      () async {
+        final calls = <String, Object?>{};
+        final fake = Fake((r) async {
+          calls['${r.method} ${r.url.path}'] = jsonDecode(r.body);
+          return http.Response('', 204);
+        });
+        final repo = ManagerAttendanceRepository(fake.client);
+        await repo.reviewException(99, approve: false, note: ' sai wifi ');
+        await repo.editTimes(
+          11,
+          checkIn: DateTime.utc(2026, 10, 29, 1),
+          reason: ' quên ',
+        );
+        await repo.voidAttendance(11, reason: 'nghỉ');
+        expect(calls['POST /api/attendance/submissions/99/review'], {
+          'approve': false,
+          'note': 'sai wifi',
+        });
+        expect(calls['POST /api/attendance/assignments/11/admin-edit'], {
+          'checkIn': '2026-10-29T01:00:00.000Z',
+          'checkOut': null,
+          'reason': 'quên',
+        });
+        expect(calls['POST /api/attendance/assignments/11/void'], {
+          'reason': 'nghỉ',
+        });
+      },
+    );
 
     test('admin devices, revoke and report requests', () async {
       final seen = <String>[];
@@ -216,7 +244,9 @@ void main() {
         seen.add('${r.method} ${r.url}');
         if (r.url.path.endsWith('/revoke')) revokeBody = jsonDecode(r.body);
         if (r.url.path == '/api/schedule/branches') {
-          return jsonResponse([{'id': 1, 'name': 'Chi nhánh 1'}]);
+          return jsonResponse([
+            {'id': 1, 'name': 'Chi nhánh 1'},
+          ]);
         }
         if (r.url.path == '/api/admin/reports/attendance') {
           return jsonResponse({
@@ -224,23 +254,35 @@ void main() {
             'from': '2026-10-01',
             'to': '2026-10-31',
             'rows': [
-              {'key': '1', 'label': 'Chi nhánh 1', 'totalShifts': 10, 'success': 8, 'late': 1, 'missing': 1, 'exceptions': 0, 'voided': 0, 'workedMinutes': 3600},
+              {
+                'key': '1',
+                'label': 'Chi nhánh 1',
+                'totalShifts': 10,
+                'success': 8,
+                'late': 1,
+                'missing': 1,
+                'exceptions': 0,
+                'voided': 0,
+                'workedMinutes': 3600,
+              },
             ],
           });
         }
         if (r.url.path == '/api/admin/devices') {
-          return jsonResponse(page([
-            {
-              'id': 5,
-              'employeeId': 7,
-              'employeeName': 'A',
-              'employeeCode': 'NV007',
-              'deviceIdentifierMasked': 'abcd…wxyz',
-              'platform': 'android',
-              'registeredAt': '2026-10-01T00:00:00Z',
-              'status': 'APPROVED',
-            },
-          ]));
+          return jsonResponse(
+            page([
+              {
+                'id': 5,
+                'employeeId': 7,
+                'employeeName': 'A',
+                'employeeCode': 'NV007',
+                'deviceIdentifierMasked': 'abcd…wxyz',
+                'platform': 'android',
+                'registeredAt': '2026-10-01T00:00:00Z',
+                'status': 'APPROVED',
+              },
+            ]),
+          );
         }
         return http.Response('', 204);
       });
@@ -272,7 +314,9 @@ void main() {
   });
 
   group('manager dashboard', () {
-    testWidgets('shows a progress indicator, then summary cards and rows', (tester) async {
+    testWidgets('shows a progress indicator, then summary cards and rows', (
+      tester,
+    ) async {
       bigScreen(tester);
       final gate = Completer<void>();
       final fake = Fake((r) async {
@@ -280,13 +324,21 @@ void main() {
         if (r.url.path.endsWith('/summary')) return jsonResponse(summaryJson());
         return jsonResponse(page([row(late: true)]));
       });
-      await tester.pumpWidget(MaterialApp(home: ManagerDashboardScreen(client: fake.client)));
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(client: fake.client)),
+      );
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsWidgets);
       gate.complete();
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const Key('summary-checkedIn'))).data, '9');
-      expect(tester.widget<Text>(find.byKey(const Key('summary-notCheckedIn'))).data, '3');
+      expect(
+        tester.widget<Text>(find.byKey(const Key('summary-checkedIn'))).data,
+        '9',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('summary-notCheckedIn'))).data,
+        '3',
+      );
       expect(find.text('Nguyễn Văn A (NV007)'), findsOneWidget);
       expect(find.text('Thành công'), findsWidgets);
       expect(find.text('Muộn 5p'), findsOneWidget);
@@ -294,22 +346,37 @@ void main() {
 
     testWidgets('empty list shows the empty message', (tester) async {
       bigScreen(tester);
-      final fake = Fake((r) async => r.url.path.endsWith('/summary') ? jsonResponse(summaryJson()) : jsonResponse(page([])));
-      await tester.pumpWidget(MaterialApp(home: ManagerDashboardScreen(client: fake.client)));
+      final fake = Fake(
+        (r) async => r.url.path.endsWith('/summary')
+            ? jsonResponse(summaryJson())
+            : jsonResponse(page([])),
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(client: fake.client)),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('empty-list')), findsOneWidget);
     });
 
     testWidgets('403 shows a permission error with retry', (tester) async {
       bigScreen(tester);
-      final fake = Fake((r) async => jsonResponse({'code': 'FORBIDDEN', 'message': 'Tài khoản không có quyền thực hiện thao tác này.'}, 403));
-      await tester.pumpWidget(MaterialApp(home: ManagerDashboardScreen(client: fake.client)));
+      final fake = Fake(
+        (r) async => jsonResponse({
+          'code': 'FORBIDDEN',
+          'message': 'Tài khoản không có quyền thực hiện thao tác này.',
+        }, 403),
+      );
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(client: fake.client)),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('Không có quyền'), findsWidgets);
       expect(find.text('Thử lại'), findsWidgets);
     });
 
-    testWidgets('exceptions tab calls /exceptions and the search sends q', (tester) async {
+    testWidgets('exceptions tab calls /exceptions and the search sends q', (
+      tester,
+    ) async {
       bigScreen(tester);
       final seen = <Uri>[];
       final fake = Fake((r) async {
@@ -317,15 +384,27 @@ void main() {
         if (r.url.path.endsWith('/summary')) return jsonResponse(summaryJson());
         return jsonResponse(page([row(status: 'PENDING_REVIEW')]));
       });
-      await tester.pumpWidget(MaterialApp(home: ManagerDashboardScreen(client: fake.client)));
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(client: fake.client)),
+      );
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('search-field')), 'an');
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pumpAndSettle();
-      expect(seen.any((u) => u.path == '/api/manager/attendance' && u.queryParameters['q'] == 'an'), isTrue);
+      expect(
+        seen.any(
+          (u) =>
+              u.path == '/api/manager/attendance' &&
+              u.queryParameters['q'] == 'an',
+        ),
+        isTrue,
+      );
       await tester.tap(find.byKey(const Key('tab-exceptions')));
       await tester.pumpAndSettle();
-      expect(seen.any((u) => u.path == '/api/manager/attendance/exceptions'), isTrue);
+      expect(
+        seen.any((u) => u.path == '/api/manager/attendance/exceptions'),
+        isTrue,
+      );
     });
 
     testWidgets('load more appends the next page', (tester) async {
@@ -337,7 +416,9 @@ void main() {
         item['employee'] = employee(p == 0 ? 'Người Một' : 'Người Hai');
         return jsonResponse(page([item], p: p, pages: 2));
       });
-      await tester.pumpWidget(MaterialApp(home: ManagerDashboardScreen(client: fake.client)));
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(client: fake.client)),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('Người Một'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('load-more')));
@@ -349,7 +430,11 @@ void main() {
   });
 
   group('attendance detail actions', () {
-    Future<void> open(WidgetTester tester, Fake fake, {bool canEdit = true}) async {
+    Future<void> open(
+      WidgetTester tester,
+      Fake fake, {
+      bool canEdit = true,
+    }) async {
       bigScreen(tester);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
@@ -363,43 +448,60 @@ void main() {
       );
     }
 
-    testWidgets('no edit actions while loading, on error or in read-only mode', (tester) async {
-      final gate = Completer<void>();
-      final slow = Fake((r) async {
-        await gate.future;
-        return jsonResponse(detailJson());
-      });
-      await open(tester, slow);
-      await tester.pump();
-      expect(find.byKey(const Key('edit-times')), findsNothing);
-      gate.complete();
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('edit-times')), findsOneWidget);
+    testWidgets(
+      'no edit actions while loading, on error or in read-only mode',
+      (tester) async {
+        final gate = Completer<void>();
+        final slow = Fake((r) async {
+          await gate.future;
+          return jsonResponse(detailJson());
+        });
+        await open(tester, slow);
+        await tester.pump();
+        expect(find.byKey(const Key('edit-times')), findsNothing);
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('edit-times')), findsOneWidget);
 
-      final failing = Fake((r) async => jsonResponse({'code': 'FORBIDDEN', 'message': 'x'}, 403));
-      await open(tester, failing);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('edit-times')), findsNothing);
-      expect(find.textContaining('Không có quyền'), findsOneWidget);
+        final failing = Fake(
+          (r) async => jsonResponse({'code': 'FORBIDDEN', 'message': 'x'}, 403),
+        );
+        await open(tester, failing);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('edit-times')), findsNothing);
+        expect(find.textContaining('Không có quyền'), findsOneWidget);
 
-      await open(tester, Fake((r) async => jsonResponse(detailJson())), canEdit: false);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('edit-times')), findsNothing);
-      expect(find.byKey(const Key('void-attendance')), findsNothing);
-      expect(find.byKey(const Key('approve-99')), findsNothing);
-    });
+        await open(
+          tester,
+          Fake((r) async => jsonResponse(detailJson())),
+          canEdit: false,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('edit-times')), findsNothing);
+        expect(find.byKey(const Key('void-attendance')), findsNothing);
+        expect(find.byKey(const Key('approve-99')), findsNothing);
+      },
+    );
 
-    testWidgets('detail shows verification, distance, events and audit; voided hides void button', (tester) async {
-      await open(tester, Fake((r) async => jsonResponse(detailJson(status: 'VOIDED'))));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('23 m (cho phép 100 m)'), findsWidgets);
-      expect(find.textContaining('Sai số GPS lớn'), findsOneWidget);
-      expect(find.textContaining('attendance.submit'), findsOneWidget);
-      expect(find.byKey(const Key('void-attendance')), findsNothing);
-      expect(find.text('Khôi phục / nhập lại giờ'), findsOneWidget);
-    });
+    testWidgets(
+      'detail shows verification, distance, events and audit; voided hides void button',
+      (tester) async {
+        await open(
+          tester,
+          Fake((r) async => jsonResponse(detailJson(status: 'VOIDED'))),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('23 m (cho phép 100 m)'), findsWidgets);
+        expect(find.textContaining('Sai số GPS lớn'), findsOneWidget);
+        expect(find.textContaining('attendance.submit'), findsOneWidget);
+        expect(find.byKey(const Key('void-attendance')), findsNothing);
+        expect(find.text('Khôi phục / nhập lại giờ'), findsOneWidget);
+      },
+    );
 
-    testWidgets('void requires a reason before calling the API', (tester) async {
+    testWidgets('void requires a reason before calling the API', (
+      tester,
+    ) async {
       final posts = <String>[];
       final fake = Fake((r) async {
         if (r.method == 'POST') {
@@ -416,14 +518,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Nhập lý do.'), findsOneWidget);
       expect(posts, isEmpty);
-      await tester.enterText(find.byKey(const Key('reason-field')), 'Nghỉ không báo');
+      await tester.enterText(
+        find.byKey(const Key('reason-field')),
+        'Nghỉ không báo',
+      );
       await tester.tap(find.byKey(const Key('reason-confirm')));
       await tester.pumpAndSettle();
       expect(posts.single, contains('/api/attendance/assignments/11/void'));
       expect(posts.single, contains('Nghỉ không báo'));
     });
 
-    testWidgets('pending exception can be rejected only with a note', (tester) async {
+    testWidgets('pending exception can be rejected only with a note', (
+      tester,
+    ) async {
       final posts = <String>[];
       final fake = Fake((r) async {
         if (r.method == 'POST') {
@@ -439,7 +546,10 @@ void main() {
       await tester.tap(find.byKey(const Key('reason-confirm')));
       await tester.pump();
       expect(posts, isEmpty);
-      await tester.enterText(find.byKey(const Key('reason-field')), 'Sai Wi-Fi');
+      await tester.enterText(
+        find.byKey(const Key('reason-field')),
+        'Sai Wi-Fi',
+      );
       await tester.tap(find.byKey(const Key('reason-confirm')));
       await tester.pumpAndSettle();
       expect(posts.single, contains('/api/attendance/submissions/99/review'));
@@ -449,24 +559,42 @@ void main() {
 
   group('report', reportTests);
   group('admin screens', () {
-    testWidgets('admin dashboard shows admin totals and the branch filter', (tester) async {
+    testWidgets('admin dashboard shows admin totals and the branch filter', (
+      tester,
+    ) async {
       bigScreen(tester);
       final fake = Fake((r) async {
         if (r.url.path == '/api/schedule/branches') {
-          return jsonResponse([{'id': 1, 'name': 'Chi nhánh 1'}]);
+          return jsonResponse([
+            {'id': 1, 'name': 'Chi nhánh 1'},
+          ]);
         }
-        if (r.url.path.endsWith('/summary')) return jsonResponse(summaryJson(admin: true));
-        if (r.url.path.startsWith('/api/admin/attendance')) return jsonResponse(page([row()]));
+        if (r.url.path.endsWith('/summary'))
+          return jsonResponse(summaryJson(admin: true));
+        if (r.url.path.startsWith('/api/admin/attendance'))
+          return jsonResponse(page([row()]));
         return jsonResponse(page([]));
       });
-      await tester.pumpWidget(MaterialApp(home: AdminDashboardScreen(client: fake.client)));
+      await tester.pumpWidget(
+        MaterialApp(home: AdminDashboardScreen(client: fake.client)),
+      );
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(find.byKey(const Key('summary-totalBranches'))).data, '2');
-      expect(tester.widget<Text>(find.byKey(const Key('summary-totalShifts'))).data, '14');
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('summary-totalBranches')))
+            .data,
+        '2',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('summary-totalShifts'))).data,
+        '14',
+      );
       expect(find.byKey(const Key('branch-filter')), findsOneWidget);
     });
 
-    testWidgets('device revoke asks for a reason and then calls the API', (tester) async {
+    testWidgets('device revoke asks for a reason and then calls the API', (
+      tester,
+    ) async {
       bigScreen(tester);
       final posts = <String>[];
       final fake = Fake((r) async {
@@ -474,21 +602,29 @@ void main() {
           posts.add('${r.url.path} ${r.body}');
           return http.Response('', 204);
         }
-        return jsonResponse(page([
-          {
-            'id': 5,
-            'employeeId': 7,
-            'employeeName': 'Nguyễn Văn A',
-            'employeeCode': 'NV007',
-            'deviceIdentifierMasked': 'abcd…wxyz',
-            'platform': 'android',
-            'registeredAt': '2026-10-01T00:00:00Z',
-            'status': 'APPROVED',
-          },
-        ]));
+        return jsonResponse(
+          page([
+            {
+              'id': 5,
+              'employeeId': 7,
+              'employeeName': 'Nguyễn Văn A',
+              'employeeCode': 'NV007',
+              'deviceIdentifierMasked': 'abcd…wxyz',
+              'platform': 'android',
+              'registeredAt': '2026-10-01T00:00:00Z',
+              'status': 'APPROVED',
+            },
+          ]),
+        );
       });
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: DeviceManagementView(repository: AdminRepository(fake.client)))),
+        MaterialApp(
+          home: Scaffold(
+            body: DeviceManagementView(
+              repository: AdminRepository(fake.client),
+            ),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('abcd…wxyz'), findsOneWidget);
@@ -515,13 +651,32 @@ void main() {
     testWidgets('devices empty and error states', (tester) async {
       bigScreen(tester);
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: DeviceManagementView(repository: AdminRepository(Fake((r) async => jsonResponse(page([]))).client)))),
+        MaterialApp(
+          home: Scaffold(
+            body: DeviceManagementView(
+              repository: AdminRepository(
+                Fake((r) async => jsonResponse(page([]))).client,
+              ),
+            ),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('empty-devices')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: DeviceManagementView(repository: AdminRepository(Fake((r) async => jsonResponse({'code': 'FORBIDDEN', 'message': 'x'}, 403)).client)))),
+        MaterialApp(
+          home: Scaffold(
+            body: DeviceManagementView(
+              repository: AdminRepository(
+                Fake(
+                  (r) async =>
+                      jsonResponse({'code': 'FORBIDDEN', 'message': 'x'}, 403),
+                ).client,
+              ),
+            ),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('Không có quyền'), findsOneWidget);
@@ -530,7 +685,9 @@ void main() {
 }
 
 void reportTests() {
-  testWidgets('report view renders grouped rows and empty state', (tester) async {
+  testWidgets('report view renders grouped rows and empty state', (
+    tester,
+  ) async {
     bigScreen(tester);
     final seen = <Uri>[];
     var empty = false;
@@ -543,12 +700,26 @@ void reportTests() {
         'rows': empty
             ? []
             : [
-                {'key': '1', 'label': 'Chi nhánh 1', 'totalShifts': 10, 'success': 8, 'late': 1, 'missing': 1, 'exceptions': 0, 'voided': 0, 'workedMinutes': 3600},
+                {
+                  'key': '1',
+                  'label': 'Chi nhánh 1',
+                  'totalShifts': 10,
+                  'success': 8,
+                  'late': 1,
+                  'missing': 1,
+                  'exceptions': 0,
+                  'voided': 0,
+                  'workedMinutes': 3600,
+                },
               ],
       });
     });
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: AttendanceReportView(repository: AdminRepository(fake.client)))),
+      MaterialApp(
+        home: Scaffold(
+          body: AttendanceReportView(repository: AdminRepository(fake.client)),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('Chi nhánh 1'), findsOneWidget);

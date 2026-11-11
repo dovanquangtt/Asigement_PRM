@@ -47,7 +47,7 @@ class _EmployeePayrollScreenState extends State<EmployeePayrollScreen> {
   };
 
   Color statusColor(Object? status) => switch (status) {
-    'paid' => const Color(0xFF286B4F),
+    'paid' => const Color(0xFF0F766E),
     'approved' => const Color(0xFF9A641B),
     _ => const Color(0xFF596B74),
   };

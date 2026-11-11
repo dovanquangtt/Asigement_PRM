@@ -15,9 +15,8 @@ class FakeApi {
   final Map<String, ApiRoute> routes; // key: "METHOD /path"
   final List<http.Request> calls = [];
 
-  int count(String key) => calls
-      .where((r) => '${r.method} ${r.url.path}' == key)
-      .length;
+  int count(String key) =>
+      calls.where((r) => '${r.method} ${r.url.path}' == key).length;
 
   ApiClient client() => ApiClient(
     client: MockClient((request) async {
@@ -25,7 +24,10 @@ class FakeApi {
       final route = routes['${request.method} ${request.url.path}'];
       if (route == null) {
         return http.Response(
-          jsonEncode({'code': 'NOT_FOUND', 'message': 'Không tìm thấy dữ liệu.'}),
+          jsonEncode({
+            'code': 'NOT_FOUND',
+            'message': 'Không tìm thấy dữ liệu.',
+          }),
           404,
           headers: {'content-type': 'application/json; charset=utf-8'},
         );
@@ -132,9 +134,11 @@ Map<String, Object?> actionJson({
   'employee': employeeJson(),
   'branch': {'id': 1, 'name': 'Chi nhánh Quận 1'},
   'shift': shiftJson(),
-  'verification': {...verificationJson(distance: distance), 'warnings': warnings},
-  'attendance':
-      attendance ?? attendanceJson(checkIn: '2026-10-29T01:02:03Z'),
+  'verification': {
+    ...verificationJson(distance: distance),
+    'warnings': warnings,
+  },
+  'attendance': attendance ?? attendanceJson(checkIn: '2026-10-29T01:02:03Z'),
   'status': status,
   'message': 'Đã ghi nhận.',
 };

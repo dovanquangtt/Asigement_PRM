@@ -16,7 +16,8 @@ import vn.anhemquan.prm.util.AppTime;
 @Service
 public class AdminService {
 
-    private static final List<String> ROLES = List.of("admin", "manager", "employee");
+    /** Roles an Admin may create accounts for: never another Admin. */
+    private static final List<String> ROLES = List.of("manager", "employee");
 
     private final JdbcTemplate jdbc;
     private final Access access;
@@ -93,26 +94,67 @@ public class AdminService {
         return result;
     }
 
+    /**
+     * Creates a Manager or Employee account (never an Admin) together with its linked employee profile so
+     * the person can use every function of the role from the first sign-in: profile in {@code branchId}
+     * (default: first branch), Service department, role-based position, the default annual leave (12 days, like
+     * the sample profile) and a contract when {@code monthlySalary} is given. Returns the employee id.
+     */
     @Transactional
-    public void createUser(String username, String password, String role) {
+    public long createUser(String username, String password, String role, String fullName, Long branchId,
+            String phone, Long monthlySalary) {
         access.require("users.manage");
-        String hash = auth.hashPassword(password);
+        if (!ROLES.contains(role)) {
+            throw ApiException.badRequest("Chỉ tạo được tài khoản Quản lý hoặc Nhân viên.");
+        }
         String name = username == null ? "" : username.trim();
         if (name.isEmpty() || name.length() > 100) {
             throw ApiException.badRequest("Tên đăng nhập phải có từ 1 đến 100 ký tự.");
         }
-        List<Long> roles = ROLES.contains(role)
-                ? jdbc.queryForList("SELECT id FROM roles WHERE code = ?", Long.class, role)
-                : List.of();
+        if (fullName == null || fullName.isBlank()) {
+            throw ApiException.badRequest("Nhập họ tên nhân viên.");
+        }
+        if (monthlySalary != null && monthlySalary < 0) {
+            throw ApiException.badRequest("Lương tháng không hợp lệ.");
+        }
+        String hash = auth.hashPassword(password);
+        List<Long> roles = jdbc.queryForList("SELECT id FROM roles WHERE code = ?", Long.class, role);
         if (roles.isEmpty()) {
             throw ApiException.badRequest("Vai trò không hợp lệ.");
         }
         if (!jdbc.queryForList("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", name).isEmpty()) {
             throw ApiException.conflict("Tên đăng nhập đã tồn tại.");
         }
-        Long id = Db.insert(jdbc,
-                "INSERT INTO users (username, password_hash) VALUES (?, ?)", name, hash);
-        jdbc.update("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", id, roles.get(0));
+        List<Long> branches = branchId == null
+                ? jdbc.queryForList("SELECT id FROM branches ORDER BY id LIMIT 1", Long.class)
+                : jdbc.queryForList("SELECT id FROM branches WHERE id = ?", Long.class, branchId);
+        if (branches.isEmpty()) {
+            throw ApiException.badRequest(branchId == null ? "Cần tạo chi nhánh trước khi tạo tài khoản."
+                    : "Chi nhánh không hợp lệ.");
+        }
+        Long userId = Db.insert(jdbc, "INSERT INTO users (username, password_hash) VALUES (?, ?)", name, hash);
+        jdbc.update("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", userId, roles.get(0));
+        String code = String.format("NV%03d", userId);
+        for (int n = 1; !jdbc.queryForList("SELECT 1 FROM employees WHERE employee_code = ?", code).isEmpty(); n++) {
+            code = String.format("NV%03d_%d", userId, n);
+        }
+        long employeeId = Db.insert(jdbc,
+                "INSERT INTO employees (user_id, employee_code, full_name, phone, branch_id, department_id, "
+                        + "position_id, hire_date, status) VALUES (?, ?, ?, ?, ?, "
+                        + "(SELECT id FROM departments WHERE code = 'SERVICE'), "
+                        + "(SELECT id FROM positions WHERE code = ?), ?, 'active')",
+                userId, code, fullName.trim(), phone == null ? "" : phone.trim(), branches.get(0),
+                "manager".equals(role) ? "MANAGER" : "WAITER", LocalDate.now(AppTime.ZONE));
+        jdbc.update("INSERT INTO leave_balances (employee_id, leave_type_id, year, granted_minutes, used_minutes) "
+                + "SELECT ?, id, ?, 5760, 0 FROM leave_types WHERE code = 'ANNUAL'", employeeId,
+                LocalDate.now(AppTime.ZONE).getYear());
+        if (monthlySalary != null && monthlySalary > 0) {
+            jdbc.update("INSERT INTO contracts (employee_id, contract_number, contract_type, start_date, salary_basis, "
+                    + "base_salary_vnd, standard_minutes_per_month, status) "
+                    + "VALUES (?, ?, 'indefinite', ?, 'monthly', ?, 12480, 'active')", employeeId, "HD-" + code,
+                    LocalDate.now(AppTime.ZONE), monthlySalary);
+        }
+        return employeeId;
     }
 
     @Transactional

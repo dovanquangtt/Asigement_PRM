@@ -170,7 +170,10 @@ class _ManagerAttendanceDetailScreenState
               line('Họ tên', d.employee.fullName),
               line('Mã', d.employee.employeeCode),
               line('Chức vụ', d.employee.position ?? 'Chưa có'),
-              line('Chi nhánh', d.shift.branchName ?? d.employee.branchName ?? ''),
+              line(
+                'Chi nhánh',
+                d.shift.branchName ?? d.employee.branchName ?? '',
+              ),
             ]),
             section('Ca và giờ công', [
               line(
@@ -250,7 +253,9 @@ class _ManagerAttendanceDetailScreenState
                     key: const Key('edit-times'),
                     onPressed: busy ? null : () => edit(d),
                     icon: const Icon(Icons.edit_outlined),
-                    label: Text(d.voided ? 'Khôi phục / nhập lại giờ' : 'Sửa giờ công'),
+                    label: Text(
+                      d.voided ? 'Khôi phục / nhập lại giờ' : 'Sửa giờ công',
+                    ),
                   ),
                   if (!d.voided)
                     OutlinedButton.icon(
@@ -290,12 +295,12 @@ class _EditDialog extends StatefulWidget {
 
 class _EditDialogState extends State<_EditDialog> {
   final reason = TextEditingController();
-  late DateTime checkIn = (widget.detail.attendance.checkInAt ??
-          widget.detail.shift.startsAt)
-      .toLocal();
-  late DateTime checkOut = (widget.detail.attendance.checkOutAt ??
-          widget.detail.shift.endsAt)
-      .toLocal();
+  late DateTime checkIn =
+      (widget.detail.attendance.checkInAt ?? widget.detail.shift.startsAt)
+          .toLocal();
+  late DateTime checkOut =
+      (widget.detail.attendance.checkOutAt ?? widget.detail.shift.endsAt)
+          .toLocal();
   String? error;
 
   @override
@@ -318,7 +323,13 @@ class _EditDialogState extends State<_EditDialog> {
       initialTime: TimeOfDay.fromDateTime(old),
     );
     if (time == null || !mounted) return;
-    final value = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final value = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
     setState(() => incoming ? checkIn = value : checkOut = value);
   }
 
@@ -355,7 +366,10 @@ class _EditDialogState extends State<_EditDialog> {
       ),
     ),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
       FilledButton(
         key: const Key('edit-save'),
         onPressed: () {
@@ -366,7 +380,11 @@ class _EditDialogState extends State<_EditDialog> {
           } else {
             Navigator.pop(
               context,
-              _EditResult(checkIn.toUtc(), checkOut.toUtc(), reason.text.trim()),
+              _EditResult(
+                checkIn.toUtc(),
+                checkOut.toUtc(),
+                reason.text.trim(),
+              ),
             );
           }
         },

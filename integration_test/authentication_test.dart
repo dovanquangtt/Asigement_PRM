@@ -77,7 +77,6 @@ void main() {
         for (final label in [
           'M02 • Tính lương & kiểm tra 6 bước',
           'M05 • Đổi ca',
-          'M06 • Sao nhân viên',
           'M07 • Ảnh & báo cáo đóng ca',
         ]) {
           await tester.scrollUntilVisible(

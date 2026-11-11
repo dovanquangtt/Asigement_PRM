@@ -34,7 +34,7 @@ void main() {
           (await db.rawQuery(
             "SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
           )).single['n'],
-          34,
+          36,
         );
         expect(
           (await db.rawQuery(

@@ -11,7 +11,8 @@ class ManagerAttendanceRepository {
   final ApiClient _client;
   final bool admin;
 
-  String get _base => admin ? '/api/admin/attendance' : '/api/manager/attendance';
+  String get _base =>
+      admin ? '/api/admin/attendance' : '/api/manager/attendance';
 
   Future<AttendanceSummary> summary({
     required DateTime date,

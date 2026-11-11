@@ -128,7 +128,10 @@ void main() {
       DateTime.utc(2026, 10, 31),
       1.5,
     );
-    await employee.calculatePay(period);
+    await manager.calculatePay(
+      period,
+      employeeId: employee.session.profile['id'] as int,
+    );
     await f.db.update(
       'payslips',
       {
@@ -314,8 +317,15 @@ void main() {
       DateTime.utc(2026, 10, 31),
       1.5,
     );
-    await employee.calculatePay(period);
-    var pay = (await employee.payslips()).single;
+    await manager.calculatePay(
+      period,
+      employeeId: employee.session.profile['id'] as int,
+    );
+    var pay = (await f.db.query(
+      'v_payslip_totals',
+      where: 'employee_id=?',
+      whereArgs: [employee.session.profile['id']],
+    )).single;
     expect(pay['regular_minutes'], 465);
     expect(pay['overtime_minutes'], 0);
     await manager.reviewAttendanceOvertime(
@@ -326,8 +336,15 @@ void main() {
     r = await record();
     expect(r['overtime_minutes'], 60);
     expect(r['late_minutes'], 15);
-    await employee.calculatePay(period);
-    pay = (await employee.payslips()).single;
+    await manager.calculatePay(
+      period,
+      employeeId: employee.session.profile['id'] as int,
+    );
+    pay = (await f.db.query(
+      'v_payslip_totals',
+      where: 'employee_id=?',
+      whereArgs: [employee.session.profile['id']],
+    )).single;
     expect(pay['regular_minutes'], 465);
     expect(pay['overtime_minutes'], 60);
     expect(pay['overtime_pay_vnd'], 90000);

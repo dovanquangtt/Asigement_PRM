@@ -8,7 +8,10 @@ DateTime? _time(Object? v) => v is String ? DateTime.tryParse(v) : null;
 Map<String, dynamic>? _map(Object? v) =>
     v is Map ? Map<String, dynamic>.from(v) : null;
 List<Map<String, dynamic>> _maps(Object? v) => v is List
-    ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)]
+    ? [
+        for (final e in v)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ]
     : const [];
 
 /// States of the attendance home screen.
@@ -55,7 +58,10 @@ class EmployeeInfo {
 
   /// Up to two initials for the avatar.
   String get initials {
-    final parts = fullName.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty);
     if (parts.isEmpty) return '?';
     final list = parts.toList();
     final first = list.first.substring(0, 1);
@@ -290,8 +296,7 @@ class AttendanceActionResponse {
       result: _opt<String>(j['result']) ?? '',
       serverTime: _time(j['serverTime']),
       employee: EmployeeInfo.fromJson(_map(j['employee']) ?? const {}),
-      branchName:
-          _opt<String>(_map(j['branch'])?['name']) ?? shift?.branchName,
+      branchName: _opt<String>(_map(j['branch'])?['name']) ?? shift?.branchName,
       shift: shift,
       verification: Verification.tryParse(j['verification']),
       attendance: AttendanceInfo.tryParse(j['attendance']),
@@ -413,7 +418,8 @@ class AttendanceDetail {
     verification: Verification.tryParse(j['verification']),
     events: [for (final e in _maps(j['events'])) AttendanceEvent.fromJson(e)],
     exceptions: [
-      if (j['exceptions'] is List) for (final e in j['exceptions'] as List) '$e',
+      if (j['exceptions'] is List)
+        for (final e in j['exceptions'] as List) '$e',
     ],
   );
 }

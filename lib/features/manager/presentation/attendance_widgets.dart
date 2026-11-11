@@ -119,7 +119,8 @@ class ErrorRetry extends StatelessWidget {
 }
 
 void showSnack(BuildContext context, String message) =>
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
 
 /// Dialog that returns a non-empty reason, or null when cancelled.
 Future<String?> askReason(

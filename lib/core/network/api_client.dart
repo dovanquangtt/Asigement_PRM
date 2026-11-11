@@ -30,9 +30,8 @@ class ApiClient {
       for (final e in (query ?? const {}).entries)
         if (e.value != null && '${e.value}'.isNotEmpty) e.key: '${e.value}',
     };
-    return Uri.parse('$_baseUrl$path').replace(
-      queryParameters: clean.isEmpty ? null : clean,
-    );
+    return Uri.parse('$_baseUrl$path')
+        .replace(queryParameters: clean.isEmpty ? null : clean);
   }
 
   Future<Object?> request(

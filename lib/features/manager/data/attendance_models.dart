@@ -266,7 +266,9 @@ class AuditEntry {
     action: '${j['action']}',
     actorName: j['actorName'] as String?,
     at: _time(j['at']),
-    detail: j['detail'] is String ? j['detail'] as String : j['detail']?.toString(),
+    detail: j['detail'] is String
+        ? j['detail'] as String
+        : j['detail']?.toString(),
   );
 }
 

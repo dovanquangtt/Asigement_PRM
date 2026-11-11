@@ -301,16 +301,27 @@ void main() {
     },
   );
   test('Employee shift table exposes pending events so the manager can approve them', () async {
-    Future<RowData> row() async => ((await manager.employeeShiftTable(
-      employee.session.profile['id'] as int,
-      from: start.subtract(const Duration(days: 1)),
-      to: start.add(const Duration(days: 1)),
-    ))['rows'] as List).single as RowData;
+    Future<RowData> row() async =>
+        ((await manager.employeeShiftTable(
+                      employee.session.profile['id'] as int,
+                      from: start.subtract(const Duration(days: 1)),
+                      to: start.add(const Duration(days: 1)),
+                    ))['rows']
+                    as List)
+                .single
+            as RowData;
     final inId = await employee.submitAttendance(
-      assignment, 'check_in', sample(start), now: start);
+      assignment,
+      'check_in',
+      sample(start),
+      now: start,
+    );
     final outId = await employee.submitAttendance(
-      assignment, 'check_out', sample(start.add(const Duration(hours: 8))),
-      now: start.add(const Duration(hours: 8)));
+      assignment,
+      'check_out',
+      sample(start.add(const Duration(hours: 8))),
+      now: start.add(const Duration(hours: 8)),
+    );
     var r = await row();
     expect(r['pending_check_in_id'], inId);
     expect(r['pending_check_out_id'], outId);

@@ -25,7 +25,9 @@ public class AdminController {
         this.service = service;
     }
 
-    public record CreateUserRequest(@NotBlank String username, @NotBlank String password, @NotBlank String role) {
+    /** Account plus its employee profile: {@code fullName} is required, the rest is optional. */
+    public record CreateUserRequest(@NotBlank String username, @NotBlank String password, @NotBlank String role,
+            String fullName, Long branchId, String phone, Long monthlySalary) {
     }
 
     public record CreateEmployeeRequest(@NotBlank String code, @NotBlank String name, String phone) {
@@ -49,8 +51,9 @@ public class AdminController {
 
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
-    public void createUser(@RequestBody @Valid CreateUserRequest request) {
-        service.createUser(request.username(), request.password(), request.role());
+    public Map<String, Long> createUser(@RequestBody @Valid CreateUserRequest request) {
+        return Map.of("employeeId", service.createUser(request.username(), request.password(), request.role(),
+                request.fullName(), request.branchId(), request.phone(), request.monthlySalary()));
     }
 
     @GetMapping("/employees")

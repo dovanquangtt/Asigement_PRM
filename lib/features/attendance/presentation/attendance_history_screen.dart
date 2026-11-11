@@ -46,7 +46,11 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       page = 0;
     });
     try {
-      final result = await repo.history(from: from, to: to, size: widget.pageSize);
+      final result = await repo.history(
+        from: from,
+        to: to,
+        size: widget.pageSize,
+      );
       if (!mounted || generation != _generation) return;
       setState(() {
         items.addAll(result.items);
@@ -82,9 +86,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       });
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(attendanceErrorMessage(e))));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(attendanceErrorMessage(e))));
       }
     } finally {
       if (mounted) setState(() => loadingMore = false);
@@ -138,14 +141,20 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                   Expanded(
                     child: Text(
                       start == null ? item.date : fmtWeekday(start),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                   Badge2(statusLabel(item.status), statusColor(item.status)),
                 ],
               ),
               const SizedBox(height: 6),
-              Text('Ca: ${fmtShift(item.shift)}', style: const TextStyle(color: muted)),
+              Text(
+                'Ca: ${fmtShift(item.shift)}',
+                style: const TextStyle(color: muted),
+              ),
               const SizedBox(height: 4),
               Text(
                 'Vào ${fmtTime(item.checkInAt)} · Ra ${fmtTime(item.checkOutAt)}'
@@ -155,7 +164,9 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Badge2(
-                    item.lateMinutes > 0 ? 'Đi muộn ${item.lateMinutes} phút' : 'Đi muộn',
+                    item.lateMinutes > 0
+                        ? 'Đi muộn ${item.lateMinutes} phút'
+                        : 'Đi muộn',
                     Colors.orange.shade800,
                   ),
                 ),
@@ -195,7 +206,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                       ? 'Tháng ${month.month}/${month.year}'
                       : '${fmtDate(custom!.start)} – ${fmtDate(custom!.end)}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
               ),
               IconButton(
@@ -217,13 +231,18 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(error!, textAlign: TextAlign.center),
-                        TextButton(onPressed: _reload, child: const Text('Thử lại')),
+                        TextButton(
+                          onPressed: _reload,
+                          child: const Text('Thử lại'),
+                        ),
                       ],
                     ),
                   ),
                 )
               : items.isEmpty
-              ? const Center(child: Text('Không có dữ liệu chấm công trong khoảng này.'))
+              ? const Center(
+                  child: Text('Không có dữ liệu chấm công trong khoảng này.'),
+                )
               : RefreshIndicator(
                   onRefresh: _reload,
                   child: ListView(
@@ -250,7 +269,11 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
 
 /// One shift's attendance: timestamps, every check-in/out event with its verification, exceptions.
 class AttendanceDetailScreen extends StatefulWidget {
-  const AttendanceDetailScreen({super.key, required this.attendanceId, this.client});
+  const AttendanceDetailScreen({
+    super.key,
+    required this.attendanceId,
+    this.client,
+  });
   final int attendanceId;
   final ApiClient? client;
   @override
@@ -275,7 +298,11 @@ class _AttendanceDetailScreenState extends State<AttendanceDetailScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(e is ApiException ? attendanceErrorMessage(e) : 'Không tải được chi tiết.'),
+                Text(
+                  e is ApiException
+                      ? attendanceErrorMessage(e)
+                      : 'Không tải được chi tiết.',
+                ),
                 TextButton(onPressed: _retry, child: const Text('Thử lại')),
               ],
             ),
@@ -290,24 +317,38 @@ class _AttendanceDetailScreenState extends State<AttendanceDetailScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             SectionCard(
-              title: item.shift == null ? 'Ca làm' : fmtWeekday(item.shift!.startsAt),
+              title: item.shift == null
+                  ? 'Ca làm'
+                  : fmtWeekday(item.shift!.startsAt),
               children: [
                 InfoRow('Ca làm', fmtShift(item.shift)),
                 InfoRow('Chi nhánh', item.shift?.branchName ?? '—'),
                 InfoRow('Giờ vào', fmtDateTime(item.checkInAt)),
                 InfoRow('Giờ ra', fmtDateTime(item.checkOutAt)),
-                InfoRow('Giờ làm', item.workedMinutes > 0 ? fmtMinutes(item.workedMinutes) : '—'),
+                InfoRow(
+                  'Giờ làm',
+                  item.workedMinutes > 0 ? fmtMinutes(item.workedMinutes) : '—',
+                ),
                 if (item.late)
-                  InfoRow('Đi muộn', item.lateMinutes > 0 ? '${item.lateMinutes} phút' : 'Có'),
+                  InfoRow(
+                    'Đi muộn',
+                    item.lateMinutes > 0 ? '${item.lateMinutes} phút' : 'Có',
+                  ),
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Row(
                     children: [
                       const SizedBox(
                         width: 118,
-                        child: Text('Trạng thái', style: TextStyle(color: muted)),
+                        child: Text(
+                          'Trạng thái',
+                          style: TextStyle(color: muted),
+                        ),
                       ),
-                      Badge2(statusLabel(item.status), statusColor(item.status)),
+                      Badge2(
+                        statusLabel(item.status),
+                        statusColor(item.status),
+                      ),
                     ],
                   ),
                 ),
@@ -327,7 +368,11 @@ class _AttendanceDetailScreenState extends State<AttendanceDetailScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange.shade800),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 18,
+                            color: Colors.orange.shade800,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(child: Text(e)),
                         ],
@@ -339,7 +384,10 @@ class _AttendanceDetailScreenState extends State<AttendanceDetailScreen> {
               title: 'Các lần chấm công',
               children: [
                 if (d.events.isEmpty)
-                  const Text('Chưa có lần chấm công nào.', style: TextStyle(color: muted)),
+                  const Text(
+                    'Chưa có lần chấm công nào.',
+                    style: TextStyle(color: muted),
+                  ),
                 for (final ev in d.events) ...[
                   Row(
                     children: [
@@ -362,10 +410,12 @@ class _AttendanceDetailScreenState extends State<AttendanceDetailScreen> {
                   const SizedBox(height: 6),
                   if (ev.accuracyMeters != null)
                     Text('Độ chính xác GPS: ±${ev.accuracyMeters!.round()} m'),
-                  if (ev.distanceMeters != null && ev.verification?.distanceMeters == null)
+                  if (ev.distanceMeters != null &&
+                      ev.verification?.distanceMeters == null)
                     Text('Cách chi nhánh: ${ev.distanceMeters!.round()} m'),
                   VerificationBlock(ev.verification),
-                  if (ev.rejectionReason != null && ev.rejectionReason!.isNotEmpty)
+                  if (ev.rejectionReason != null &&
+                      ev.rejectionReason!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text('Lý do: ${ev.rejectionReason}'),

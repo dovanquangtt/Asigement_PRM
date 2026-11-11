@@ -8,20 +8,22 @@ class BackendAuth {
   BackendAuth([ApiClient? client]) : _client = client ?? ApiClient.instance;
   final ApiClient _client;
 
-  Future<UserSession> login(String username, String password) =>
-      _authenticate('/api/auth/login', {
-        'username': username.trim(),
-        'password': password,
-      });
+  Future<UserSession> login(String username, String password) => _authenticate(
+    '/api/auth/login',
+    {'username': username.trim(), 'password': password},
+  );
 
   Future<UserSession> loginWithGoogle(String idToken) =>
       _authenticate('/api/auth/google', {'idToken': idToken});
 
   Future<UserSession> _authenticate(String path, Object body) async {
     try {
-      final data =
-          (await _client.request('POST', path, body: body, auth: false))
-              as Map<String, dynamic>;
+      final data = (await _client.request(
+        'POST',
+        path,
+        body: body,
+        auth: false,
+      )) as Map<String, dynamic>;
       await _client.tokens.write(data['accessToken'] as String);
       return sessionFrom(data['session'] as Map<String, dynamic>);
     } on ApiException catch (e) {

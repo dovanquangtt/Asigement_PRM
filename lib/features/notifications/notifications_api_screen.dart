@@ -17,7 +17,8 @@ class _NotificationsApiScreenState extends State<NotificationsApiScreen> {
   ApiClient get _client => widget.client ?? ApiClient.instance;
 
   Future<List<Map<String, dynamic>>> _load() async =>
-      (await _client.getList('/api/notifications')).cast<Map<String, dynamic>>();
+      (await _client.getList('/api/notifications'))
+          .cast<Map<String, dynamic>>();
 
   Future<void> _refresh() async {
     final next = _load();
@@ -34,7 +35,8 @@ class _NotificationsApiScreenState extends State<NotificationsApiScreen> {
       await _refresh();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -59,7 +61,9 @@ class _NotificationsApiScreenState extends State<NotificationsApiScreen> {
             child: TextButton(
               onPressed: _refresh,
               child: Text(
-                e is ApiException ? e.message : 'Không tải được thông báo. Thử lại.',
+                e is ApiException
+                    ? e.message
+                    : 'Không tải được thông báo. Thử lại.',
               ),
             ),
           );
@@ -94,7 +98,9 @@ class _NotificationsApiScreenState extends State<NotificationsApiScreen> {
                       title: Text(
                         '${r['title']}',
                         style: TextStyle(
-                          fontWeight: unread ? FontWeight.w800 : FontWeight.w400,
+                          fontWeight: unread
+                              ? FontWeight.w800
+                              : FontWeight.w400,
                         ),
                       ),
                       subtitle: Text('${r['body']}'),

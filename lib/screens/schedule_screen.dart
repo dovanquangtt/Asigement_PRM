@@ -5,12 +5,23 @@ import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/shift_day_dialog.dart';
+import '../widgets/shift_timeline.dart';
+import 'month_calendar_screen.dart';
+import 'shift_swap_screen.dart';
 import 'operations_screen.dart';
 
 class ScheduleScreen extends StatefulWidget {
-  const ScheduleScreen({super.key, required this.repository});
+  const ScheduleScreen({
+    super.key,
+    required this.repository,
+    this.reloadToken = 0,
+  });
 
   final WorkforceRepository repository;
+
+  /// Đổi giá trị này (ví dụ khi có thông báo phân ca mới) để màn hình tải lại dữ liệu mà không
+  /// mất tuần/ngày người dùng đang xem.
+  final int reloadToken;
 
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();
@@ -20,13 +31,82 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   WorkforceRepository get r => widget.repository;
 
   late Future<(List<RowData>, List<RowData>)> _loading;
-  int? _selectedDayIndex; // null = Tất cả ngày
-  String _statusFilter = 'all'; // 'all', 'upcoming', 'completed'
+  late DateTime _weekStart = _mondayOfWeek(DateTime.now());
+  DateTime? _selectedDay; // null = cả tuần
 
   @override
   void initState() {
     super.initState();
     _reload();
+  }
+
+  @override
+  void didUpdateWidget(ScheduleScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reloadToken != widget.reloadToken) _reload();
+  }
+
+  void _openCalendar(List<RowData> shifts, List<RowData> leaves) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => MonthCalendarScreen(
+          shifts: shifts,
+          leaves: leaves,
+          initialMonth: _weekStart,
+          onDayTap: _showDayDialog,
+        ),
+      ),
+    );
+  }
+
+  /// Chuyển bảng lịch tới tuần chứa [shift] để người dùng thấy ca đó ngay.
+  void _goToShift(RowData shift) {
+    final start = utcTime(shift['starts_at']).toLocal();
+    setState(() {
+      _weekStart = _mondayOfWeek(start);
+      _selectedDay = DateTime(start.year, start.month, start.day);
+    });
+  }
+
+  /// Biểu ngữ báo có ca mới được phân (kể cả ở tuần khác), bấm để tới ca sớm nhất.
+  Widget _newShiftsBanner(List<RowData> shifts) {
+    final nowUtc = DateTime.now().toUtc();
+    final fresh = [
+      for (final s in shifts)
+        if (shiftIsNew(s, nowUtc)) s,
+    ]..sort((a, b) => '${a['starts_at']}'.compareTo('${b['starts_at']}'));
+    if (fresh.isEmpty) return const SizedBox.shrink();
+    final first = utcTime(fresh.first['starts_at']).toLocal();
+    return Container(
+      key: const Key('new-shifts-banner'),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: newShiftColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: newShiftColor, width: 1.6),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_rounded, color: newShiftColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Bạn có ${fresh.length} ca mới được phân. '
+              'Ca gần nhất: ${first.day.toString().padLeft(2, '0')}/${first.month.toString().padLeft(2, '0')} '
+              '${first.hour.toString().padLeft(2, '0')}:${first.minute.toString().padLeft(2, '0')}.',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: ink),
+            ),
+          ),
+          TextButton(
+            key: const Key('new-shifts-go'),
+            onPressed: () => _goToShift(fresh.first),
+            child: const Text('Xem'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _reload() {
@@ -37,6 +117,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   List<RowData> _allShifts = const [];
   List<RowData> _balances = const [];
+  List<RowData> _leaves = const [];
 
   /// 1 ngày phép = 480 phút.
   String _days(int minutes) =>
@@ -51,6 +132,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _balances = const []; // tài khoản chưa có hồ sơ nhân viên: không có số dư
     }
     final leaves = await r.employeeLeaveRequests();
+    _leaves = leaves;
     return (shifts, leaves);
   }
 
@@ -99,33 +181,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> _requestSwap(int ownAssignmentId) async {
-    final options = await r.swapOptions(ownAssignmentId);
-    if (!mounted) return;
-    if (options.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không có ca phù hợp để gửi yêu cầu đổi ca lúc này.'),
-        ),
-      );
-      return;
-    }
-
-    await featureForm(
+    await Navigator.push<void>(
       context,
-      'Gửi yêu cầu đổi ca',
-      [
-        InputSpec(
-          'target',
-          'Chọn ca muốn đổi',
-          options: {
-            for (final a in options)
-              '${a['id']}': '${a['full_name']} • ${localTime(a['starts_at'])}',
-          },
+      MaterialPageRoute<void>(
+        builder: (_) => ShiftSwapScreen(
+          repository: r,
+          initialAssignmentId: ownAssignmentId,
         ),
-        const InputSpec('reason', 'Lý do đổi ca'),
-      ],
-      (v) =>
-          r.requestSwap(ownAssignmentId, int.parse(v['target']!), v['reason']!),
+      ),
     );
     if (mounted) _reload();
   }
@@ -137,20 +200,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return 'Ca tối';
   }
 
-  IconData _shiftIcon(DateTime start) {
-    final hour = start.hour;
-    if (hour < 12) return Icons.wb_sunny_rounded;
-    if (hour < 17) return Icons.wb_twilight_rounded;
-    return Icons.bedtime_rounded;
-  }
-
-  Color _shiftColor(DateTime start) {
-    final hour = start.hour;
-    if (hour < 12) return const Color(0xFFD35400); // Amber orange
-    if (hour < 17) return const Color(0xFFE67E22); // Coral
-    return const Color(0xFF2C3E50); // Deep Blue
-  }
-
   DateTime _mondayOfWeek(DateTime date) {
     final monday = date.subtract(Duration(days: date.weekday - 1));
     return DateTime(monday.year, monday.month, monday.day);
@@ -158,9 +207,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final nowVn = DateTime.now();
-    final startOfWeek = _mondayOfWeek(nowVn);
-
     return FutureBuilder<(List<RowData>, List<RowData>)>(
       future: _loading,
       builder: (context, snapshot) {
@@ -220,24 +266,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             upcomingCount++;
           }
         }
-
-        // Lọc ca làm
-        final filteredShifts = allShifts.where((s) {
-          final dt = utcTime(s['starts_at']).toLocal();
-          if (_selectedDayIndex != null) {
-            final weekdayIndex = dt.weekday - 1; // 0..6
-            if (weekdayIndex != _selectedDayIndex) return false;
-          }
-
-          if (_statusFilter == 'upcoming') {
-            return utcTime(s['starts_at']).isAfter(nowUtc) &&
-                s['shift_status'] != 'cancelled';
-          } else if (_statusFilter == 'completed') {
-            return utcTime(s['ends_at']).isBefore(nowUtc) ||
-                s['shift_status'] == 'completed';
-          }
-          return true;
-        }).toList();
 
         return RefreshIndicator(
           onRefresh: () async => _reload(),
@@ -304,270 +332,62 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
               const SizedBox(height: 22),
 
-              // 2. Thanh chọn thứ trong tuần có hiển thị ngày thực tế
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Lịch theo thứ trong tuần',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: ink,
-                    ),
-                  ),
-                  if (_selectedDayIndex != null)
-                    InkWell(
-                      onTap: () => setState(() => _selectedDayIndex = null),
-                      child: const Text(
-                        'Xem tất cả',
-                        style: TextStyle(
-                          color: green,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Strip ngày thứ T2 -> CN
+              // 2. Bảng lịch tuần: lịch ca + điểm danh + nghỉ phép gộp một chỗ
               Row(
                 children: [
-                  // Nút Tất cả
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: _selectedDayIndex == null
-                              ? green
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _selectedDayIndex == null
-                                ? green
-                                : const Color(0xFFE8EDE7),
-                          ),
-                          boxShadow: _selectedDayIndex == null
-                              ? [
-                                  BoxShadow(
-                                    color: green.withValues(alpha: 0.2),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: InkWell(
-                          onTap: () => setState(() => _selectedDayIndex = null),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Column(
-                              children: [
-                                Text(
-                                  'TẤT CẢ',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.5,
-                                    color: _selectedDayIndex == null
-                                        ? Colors.white
-                                        : Colors.black54,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Icon(
-                                  Icons.clear_all_rounded,
-                                  size: 18,
-                                  color: _selectedDayIndex == null
-                                      ? Colors.white
-                                      : ink,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Nút T2 -> CN với ngày thực tế
-                  for (int i = 0; i < 7; i++) ...[
-                    Builder(
-                      builder: (_) {
-                        final dayDate = startOfWeek.add(Duration(days: i));
-                        final isToday =
-                            dayDate.year == nowVn.year &&
-                            dayDate.month == nowVn.month &&
-                            dayDate.day == nowVn.day;
-                        final isSelected = _selectedDayIndex == i;
-
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: isSelected ? green : Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? green
-                                      : isToday
-                                      ? green.withValues(alpha: 0.5)
-                                      : const Color(0xFFE8EDE7),
-                                  width: isToday && !isSelected ? 1.5 : 1,
-                                ),
-                                boxShadow: isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: green.withValues(alpha: 0.2),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: InkWell(
-                                onTap: () =>
-                                    setState(() => _selectedDayIndex = i),
-                                borderRadius: BorderRadius.circular(14),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        [
-                                          'T2',
-                                          'T3',
-                                          'T4',
-                                          'T5',
-                                          'T6',
-                                          'T7',
-                                          'CN',
-                                        ][i],
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: isSelected
-                                              ? Colors.white70
-                                              : Colors.black54,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${dayDate.day}',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w800,
-                                          color: isSelected
-                                              ? Colors.white
-                                              : isToday
-                                              ? green
-                                              : ink,
-                                        ),
-                                      ),
-                                      if (isToday && !isSelected) ...[
-                                        const SizedBox(height: 2),
-                                        Container(
-                                          width: 4,
-                                          height: 4,
-                                          decoration: const BoxDecoration(
-                                            color: green,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Filter theo trạng thái
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildFilterChip('Tất cả ca', 'all'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Ca sắp tới', 'upcoming'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('Ca đã xong', 'completed'),
-                  ],
-                ),
-              ),
-
-              section(
-                _selectedDayIndex == null
-                    ? 'Danh sách phân ca'
-                    : 'Ca làm Thứ ${['2', '3', '4', '5', '6', '7', 'Chủ nhật'][_selectedDayIndex!]} (${startOfWeek.add(Duration(days: _selectedDayIndex!)).day}/${startOfWeek.add(Duration(days: _selectedDayIndex!)).month})',
-              ),
-
-              if (filteredShifts.isEmpty)
-                panel(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF0F5EA),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.free_breakfast_outlined,
-                            size: 36,
+                  Expanded(child: section('Lịch ca & điểm danh')),
+                  Tooltip(
+                    message: 'Xem lịch tháng',
+                    child: Material(
+                      color: const Color(0xFFE0F2EF),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        key: const Key('open-month-calendar'),
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => _openCalendar(allShifts, leaves),
+                        child: const SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(
+                            Icons.calendar_month_rounded,
                             color: green,
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        Text(
-                          _selectedDayIndex != null
-                              ? 'Bạn không có ca làm vào ngày này.'
-                              : 'Không tìm thấy ca làm phù hợp.',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Hãy tận dụng thời gian để nghỉ ngơi và thư giãn!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.black54, fontSize: 13),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                )
-              else
-                for (final shift in filteredShifts) ...[
-                  _buildShiftCard(context, shift),
-                  const SizedBox(height: 16),
                 ],
+              ),
+              _newShiftsBanner(allShifts),
+              ShiftTimeline(
+                entries: buildTimeline(
+                  shifts: allShifts,
+                  leaves: leaves,
+                  from: _weekStart,
+                  to: DateTime(
+                    _weekStart.year,
+                    _weekStart.month,
+                    _weekStart.day + 6,
+                  ),
+                ),
+                weekStart: _weekStart,
+                selectedDay: _selectedDay,
+                now: DateTime.now(),
+                onPrevWeek: () => _moveWeek(-7),
+                onNextWeek: () => _moveWeek(7),
+                onThisWeek: () => setState(() {
+                  _weekStart = _mondayOfWeek(DateTime.now());
+                  _selectedDay = null;
+                }),
+                onSelectDay: (day) => setState(() => _selectedDay = day),
+                cardActions: _cardActions,
+              ),
+              const SizedBox(height: 8),
 
               // 3. Số ngày phép còn lại và yêu cầu xin nghỉ phép
               section('Số ngày phép của bạn'),
               if (_balances.isEmpty)
-                panel(
-                  child: const Text('Chưa có số ngày phép được cấp.'),
-                )
+                panel(child: const Text('Chưa có số ngày phép được cấp.'))
               else
                 panel(
                   child: Column(
@@ -590,7 +410,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0F5EA),
+                          color: const Color(0xFFF1F8F7),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -619,7 +439,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                             Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF0F5EA),
+                                color: const Color(0xFFF1F8F7),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(
@@ -713,25 +533,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: green,
-      backgroundColor: Colors.white,
-      side: BorderSide(color: isSelected ? green : const Color(0xFFE8EDE7)),
-      labelStyle: TextStyle(
-        fontSize: 13,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-        color: isSelected ? Colors.white : ink,
-      ),
-      onSelected: (selected) {
-        if (selected) setState(() => _statusFilter = value);
-      },
-    );
-  }
-
   Widget _buildStatusPill(String status) {
     final (label, bg, fg) = switch (status) {
       'approved' => (
@@ -746,7 +547,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
       'cancelled' => (
         'Đã hủy',
-        const Color(0xFFF2F4F4),
+        const Color(0xFFF1F8F7),
         const Color(0xFF7F8C8D),
       ),
       _ => ('Chờ duyệt', const Color(0xFFFEF5E7), const Color(0xFFE67E22)),
@@ -763,6 +564,125 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg),
       ),
     );
+  }
+
+  void _moveWeek(int days) {
+    setState(() {
+      _weekStart = DateTime(
+        _weekStart.year,
+        _weekStart.month,
+        _weekStart.day + days,
+      );
+      _selectedDay = null;
+    });
+  }
+
+  /// Thao tác trên thẻ ca trong bảng lịch: phản hồi ca, điểm danh, đổi ca, đóng ca, xem thông tin.
+  List<Widget> _cardActions(RowData shift, ShiftPhase phase) {
+    final assignmentId = shift['assignment_id'] as int;
+    final response = shift['response_status']?.toString() ?? 'accepted';
+    final started = !utcTime(shift['starts_at'])
+        .isAfter(DateTime.now().toUtc());
+    final closure = shift['closure_status']?.toString();
+    final canPunch =
+        phase == ShiftPhase.notYet ||
+        phase == ShiftPhase.working ||
+        phase == ShiftPhase.pendingReview;
+    final canSwap = phase == ShiftPhase.notYet && !started;
+    final canClose =
+        phase == ShiftPhase.completed &&
+        closure != 'submitted' &&
+        closure != 'approved';
+    Widget action(
+      String label,
+      IconData icon,
+      VoidCallback onTap, {
+      Key? key,
+    }) => OutlinedButton.icon(
+      key: key,
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: Colors.white,
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
+    return [
+      if (response != 'accepted') ..._responseSection(shift),
+      if (closure == 'submitted' || closure == 'approved') ...[
+        const SizedBox(height: 8),
+        pill(
+          closure == 'approved'
+              ? '✓ Báo cáo đóng ca đã duyệt'
+              : '📷 Đã gửi báo cáo đóng ca',
+        ),
+      ],
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (canPunch)
+            FilledButton.icon(
+              key: Key('timeline-punch-$assignmentId'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      AttendancePage(repository: r, assignmentId: assignmentId),
+                ),
+              ).then((_) => _reload()),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.fingerprint_rounded, size: 18),
+              label: Text(
+                phase == ShiftPhase.working ? 'Điểm danh ra ca' : 'Điểm danh',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (canSwap)
+            action(
+              'Đổi ca',
+              Icons.swap_horiz_rounded,
+              () => _requestSwap(assignmentId),
+            ),
+          if (canClose)
+            action(
+              'Báo cáo đóng ca',
+              Icons.camera_alt_outlined,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      ClosurePage(repository: r, assignmentId: assignmentId),
+                ),
+              ).then((_) => _reload()),
+              key: Key('timeline-close-$assignmentId'),
+            ),
+          action(
+            'Xem thông tin',
+            Icons.info_outline_rounded,
+            () => _showDayInfo(shift),
+            key: Key('shift-info-$assignmentId'),
+          ),
+        ],
+      ),
+    ];
   }
 
   /// Chấp nhận / từ chối ca được phân. Chỉ hỏi khi ca còn chờ phản hồi và chưa bắt đầu.
@@ -868,408 +788,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     ];
   }
 
-  Widget _buildShiftCard(BuildContext context, RowData shift) {
-    final startVn = utcTime(shift['starts_at']).toLocal();
-    final endVn = utcTime(shift['ends_at']).toLocal();
-    final durationMins = endVn.difference(startVn).inMinutes;
-    final durationHoursStr = (durationMins / 60).toStringAsFixed(
-      durationMins % 60 == 0 ? 0 : 1,
-    );
-
-    final title = _shiftTitle(startVn);
-    final icon = _shiftIcon(startVn);
-    final iconColor = _shiftColor(startVn);
-
-    final shiftStatus = shift['shift_status']?.toString() ?? 'scheduled';
-    final assignmentId = shift['assignment_id'] as int;
-    final coworkersStr = shift['coworkers']?.toString() ?? '';
-    final lastAttendance = shift['last_attendance_event']?.toString();
-    final closureStatus = shift['closure_status']?.toString();
-
-    final nowUtc = DateTime.now().toUtc();
-    final isPast = utcTime(shift['ends_at']).isBefore(nowUtc);
-    final isInProgress =
-        utcTime(shift['starts_at']).isBefore(nowUtc) && !isPast;
-
-    final List<String> coworkersList = coworkersStr.isNotEmpty
-        ? coworkersStr.split(', ').where((c) => c.trim().isNotEmpty).toList()
-        : [];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE8EDE7)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Thanh viền màu thể hiện loại ca
-              Container(width: 6, color: iconColor),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header ca làm
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: iconColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(icon, color: iconColor, size: 20),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: ink,
-                                  ),
-                                ),
-                                Text(
-                                  'Chi nhánh: ${shift['branch_name']}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          _buildShiftBadge(
-                            isInProgress: isInProgress,
-                            isPast: isPast,
-                            status: shiftStatus,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Giờ làm việc & Khung thời lượng
-                      Row(
-                        children: [
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                '${startVn.hour.toString().padLeft(2, '0')}:${startVn.minute.toString().padLeft(2, '0')} — ${endVn.hour.toString().padLeft(2, '0')}:${endVn.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  color: ink,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF0F5EA),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '$durationHoursStr tiếng',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: green,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Ngày dương lịch
-                      Text(
-                        'Thứ ${startVn.weekday == 7 ? 'Chủ nhật' : startVn.weekday + 1}, ngày ${startVn.day.toString().padLeft(2, '0')}/${startVn.month.toString().padLeft(2, '0')}/${startVn.year}',
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13,
-                        ),
-                      ),
-
-                      ..._responseSection(shift),
-
-                      if (shift['shift_note'] != null &&
-                          shift['shift_note'].toString().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on_outlined,
-                              size: 14,
-                              color: muted,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                '${shift['shift_note']}',
-                                style: const TextStyle(
-                                  color: Colors.black54,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-
-                      const Divider(height: 24),
-
-                      // Đồng nghiệp cùng ca
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.group_outlined,
-                            size: 18,
-                            color: green,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: coworkersList.isNotEmpty
-                                ? Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      const Text(
-                                        'Cùng ca:',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                      for (final name in coworkersList)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF4F6F4),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '👤 $name',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: ink,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  )
-                                : const Text(
-                                    'Chưa có đồng nghiệp khác ghép ca',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black54,
-                                    ),
-                                  ),
-                          ),
-                        ],
-                      ),
-
-                      // Trạng thái điểm danh / đóng ca nếu có
-                      if (lastAttendance != null || closureStatus != null) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            if (lastAttendance == 'check_in')
-                              pill('✓ Đã điểm danh vào ca')
-                            else if (lastAttendance == 'check_out')
-                              pill('✓ Đã điểm danh ra ca'),
-                            if (closureStatus == 'submitted')
-                              pill('📷 Đã gửi báo cáo đóng ca')
-                            else if (closureStatus == 'approved')
-                              pill('✓ Báo cáo đóng ca đã duyệt'),
-                          ],
-                        ),
-                      ],
-
-                      const SizedBox(height: 18),
-
-                      // Hàng nút thao tác chính/phụ
-                      Row(
-                        children: [
-                          // Nút chính: Điểm danh hoặc Báo cáo đóng ca
-                          Expanded(
-                            flex: 3,
-                            child: FilledButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute<void>(
-                                  builder: (_) => AttendancePage(
-                                    repository: r,
-                                    assignmentId: assignmentId,
-                                  ),
-                                ),
-                              ).then((_) => _reload()),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: isInProgress ? green : ink,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.fingerprint_rounded,
-                                size: 20,
-                              ),
-                              label: Text(
-                                isInProgress
-                                    ? 'Điểm danh vào/ra ca'
-                                    : 'Điểm danh',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Nút Đổi ca
-                          Expanded(
-                            flex: 2,
-                            child: OutlinedButton.icon(
-                              onPressed: () => _requestSwap(assignmentId),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.swap_horiz_rounded,
-                                size: 18,
-                              ),
-                              label: const Text(
-                                'Đổi ca',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      Row(
-                        children: [
-                          // Nút Đóng ca
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute<void>(
-                                  builder: (_) => ClosurePage(
-                                    repository: r,
-                                    assignmentId: assignmentId,
-                                  ),
-                                ),
-                              ).then((_) => _reload()),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              icon: const Icon(
-                                Icons.camera_alt_outlined,
-                                size: 18,
-                              ),
-                              label: const Text(
-                                'Báo cáo & đóng ca',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Nút xem thông tin chi tiết: mở bảng toàn bộ ca trong ngày
-                          OutlinedButton.icon(
-                            key: Key('shift-info-$assignmentId'),
-                            onPressed: () => _showDayInfo(shift),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.info_outline_rounded,
-                              size: 18,
-                            ),
-                            label: const Text(
-                              'Xem thông tin',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   static const _slotColors = [
     Color(0xFFE67E22),
     Color(0xFF2F6FDE),
@@ -1284,14 +802,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   /// Bảng thông tin chi tiết toàn bộ ca của ngày chứa [tapped], theo từng thẻ ca.
-  void _showDayInfo(RowData tapped) {
-    final day = utcTime(tapped['starts_at']).toLocal();
-    bool sameDay(DateTime d) =>
-        d.year == day.year && d.month == day.month && d.day == day.day;
+  /// Hộp chi tiết ca của ngày chứa [tapped] (ca vừa bấm được viền đậm).
+  void _showDayInfo(RowData tapped) => _showDayDialog(
+    dateOnly(utcTime(tapped['starts_at']).toLocal()),
+    highlight: tapped['assignment_id'] as int?,
+  );
+
+  /// Hộp chi tiết toàn bộ ca và ngày nghỉ phép đã duyệt của một [day]; dùng cho cả nút "Xem thông
+  /// tin" trên thẻ ca và việc bấm một ngày trên lịch tháng.
+  void _showDayDialog(DateTime day, {int? highlight}) {
     final dayShifts = [
       for (final s in _allShifts)
-        if (sameDay(utcTime(s['starts_at']).toLocal())) s,
+        if (dateOnly(utcTime(s['starts_at']).toLocal()) == day) s,
     ]..sort((a, b) => '${a['starts_at']}'.compareTo('${b['starts_at']}'));
+    final nowUtc = DateTime.now().toUtc();
     final items = <ShiftDayItem>[];
     for (var i = 0; i < dayShifts.length; i++) {
       final s = dayShifts[i];
@@ -1307,16 +831,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final note = '${s['shift_note'] ?? ''}'.trim();
       final reason = '${s['response_note'] ?? ''}'.trim();
       final coworkers = '${s['coworkers'] ?? ''}'.trim();
-      final hasIn = s['check_in_at'] != null;
-      final hasOut = s['check_out_at'] != null;
-      final ended = utcTime(s['ends_at']).isBefore(DateTime.now().toUtc());
-      final (attLabel, attBg, attFg) = hasIn && hasOut
-          ? ('HOÀN TẤT', const Color(0xFFE8F8F5), const Color(0xFF27AE60))
-          : hasIn
-          ? ('ĐANG LÀM', const Color(0xFFFEF5E7), const Color(0xFFE67E22))
-          : ended
-          ? ('THIẾU ĐIỂM DANH', const Color(0xFFFDEDEC), const Color(0xFFC0392B))
-          : ('CHƯA ĐIỂM DANH', const Color(0xFFE5E8E8), const Color(0xFF5F6B6B));
+      // Cùng bộ nhãn trạng thái với bảng lịch: Ca đã hoàn thành / Nghỉ / Chưa vào ca ...
+      final phase = phaseStyle(shiftPhase(s, nowUtc));
       final closure = s['closure_status']?.toString();
       final shiftId = s['shift_id'] as int;
       final assignmentId = s['assignment_id'] as int;
@@ -1329,7 +845,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           branch: '${s['branch_name']}',
           code: 'Mã ca #$shiftId',
           title: _shiftTitle(start),
-          highlighted: assignmentId == tapped['assignment_id'],
+          highlighted: assignmentId == highlight,
           lines: [
             MapEntry('Thời lượng', '$hours tiếng'),
             MapEntry(
@@ -1346,7 +862,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             if (note.isNotEmpty) MapEntry('Ghi chú', note),
           ],
           chips: [
-            ShiftChip(attLabel, attBg, attFg),
+            ShiftChip(phase.label, phase.color, Colors.white),
             if (closure == 'submitted')
               const ShiftChip(
                 'ĐÃ GỬI ĐÓNG CA',
@@ -1381,60 +897,35 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
       );
     }
-    showShiftDayDialog(context, day: day, items: items);
-  }
-
-  Widget _buildShiftBadge({
-    required bool isInProgress,
-    required bool isPast,
-    required String status,
-  }) {
-    final (label, bg, fg) = switch (status) {
-      'cancelled' => (
-        'Đã hủy',
-        const Color(0xFFFDEDEC),
-        const Color(0xFFC0392B),
-      ),
-      _ when isInProgress => (
-        'Đang diễn ra',
-        const Color(0xFFE8F8F5),
-        const Color(0xFF27AE60),
-      ),
-      _ when isPast || status == 'completed' => (
-        'Hoàn thành',
-        const Color(0xFFF2F4F4),
-        const Color(0xFF7F8C8D),
-      ),
-      _ => ('Sắp tới', const Color(0xFFEBF5FB), const Color(0xFF2980B9)),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isInProgress) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+    // Ngày nghỉ phép đã duyệt rơi vào ngày này.
+    for (final e in buildTimeline(
+      shifts: const [],
+      leaves: _leaves,
+      from: day,
+      to: day,
+    )) {
+      final l = e.leave!;
+      final why = '${l['reason'] ?? ''}'.trim();
+      items.add(
+        ShiftDayItem(
+          slot: 'Nghỉ',
+          color: leavePhaseStyle.color,
+          start: e.start,
+          end: e.end,
+          boxLabel: 'Loại nghỉ',
+          branch: '${l['leave_type_name']}',
+          code: 'Nghỉ phép đã được duyệt',
+          title: why.isEmpty ? 'Nghỉ phép' : why,
+          chips: [
+            ShiftChip(
+              leavePhaseStyle.label,
+              leavePhaseStyle.color,
+              Colors.white,
             ),
-            const SizedBox(width: 5),
           ],
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: fg,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
+    showShiftDayDialog(context, day: day, items: items);
   }
 }

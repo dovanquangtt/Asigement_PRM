@@ -24,6 +24,7 @@ class ShiftDayItem {
     this.lines = const [],
     this.chips = const [],
     this.highlighted = false,
+    this.boxLabel = 'Chi nhánh',
   });
 
   /// Nhãn ca trong ngày, ví dụ "Ca 1".
@@ -41,6 +42,9 @@ class ShiftDayItem {
 
   /// Ca người dùng vừa bấm xem (viền đậm hơn).
   final bool highlighted;
+
+  /// Nhãn nhỏ của ô thông tin đầu thẻ (mặc định "Chi nhánh"; ngày nghỉ phép dùng "Loại nghỉ").
+  final String boxLabel;
 }
 
 String _hm(DateTime d) =>
@@ -67,7 +71,7 @@ class ShiftDayDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Dialog(
     key: const Key('shift-day-dialog'),
-    backgroundColor: const Color(0xFFF1F3F4),
+    backgroundColor: const Color(0xFFF1F8F7),
     insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
     clipBehavior: Clip.antiAlias,
@@ -143,7 +147,7 @@ class _ShiftCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
-        color: item.highlighted ? item.color : const Color(0xFFE6EAE8),
+        color: item.highlighted ? item.color : const Color(0xFFD5E7E4),
         width: item.highlighted ? 1.6 : 1,
       ),
     ),
@@ -210,15 +214,15 @@ class _ShiftCard extends StatelessWidget {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F3F4),
+                      color: const Color(0xFFF1F8F7),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Chi nhánh',
-                          style: TextStyle(fontSize: 11, color: muted),
+                        Text(
+                          item.boxLabel,
+                          style: const TextStyle(fontSize: 11, color: muted),
                         ),
                         Text(
                           item.branch,

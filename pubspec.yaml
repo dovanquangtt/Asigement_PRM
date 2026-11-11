@@ -49,6 +49,8 @@ dependencies:
   http: ^1.6.0
   flutter_secure_storage: ^11.2.0
   flutter_local_notifications: ^22.3.3
+  pdf: ^3.13.1
+  printing: ^5.15.1
 
 dev_dependencies:
   integration_test:
@@ -77,6 +79,7 @@ flutter:
     - assets/branding/anh_em_quan.jpg
     - database/prm_database.db
     - database/demo_assets/
+    - assets/fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

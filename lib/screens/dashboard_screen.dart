@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
+import 'dashboard_detail_screen.dart';
 
 /// M12 Dashboard cho quản lý/Admin: thống kê theo tháng về nhân sự, ca làm, điểm danh,
 /// nghỉ phép, giờ làm và lương. Quản lý chỉ thấy chi nhánh của mình.
@@ -43,39 +44,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static String vnd(int amount) =>
       '${amount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')} ₫';
 
-  Widget _card(String title, IconData icon, List<(String, String)> rows) =>
-      Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFFE6EAE8)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _card(
+    String kind,
+    String title,
+    IconData icon,
+    List<(String, String)> rows,
+  ) => Card(
+    margin: const EdgeInsets.only(bottom: 12),
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: Color(0xFFD5E7E4)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(icon, color: green),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: ink,
-                    ),
-                  ),
-                ],
+              Icon(icon, color: green),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: ink,
+                ),
               ),
-              const SizedBox(height: 8),
-              for (final r in rows) money(r.$1, r.$2),
             ],
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          for (final r in rows) money(r.$1, r.$2),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: Key('detail-$kind'),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => DashboardDetailScreen(
+                    repository: widget.repository,
+                    kind: kind,
+                    title: title,
+                    from: month,
+                    to: DateTime(month.year, month.month + 1, 0),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.list_alt, size: 18),
+              label: const Text('Xem chi tiết'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _body(RowData d) {
     final e = d['employees'] as RowData;
@@ -88,11 +113,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _card('Nhân sự', Icons.groups_outlined, [
+        _card('employees', 'Nhân sự', Icons.groups_outlined, [
           ('Nhân viên đang làm', '${i(e['active'])}'),
           ('Có tài khoản đăng nhập', '${i(e['with_account'])}'),
         ]),
-        _card('Ca làm', Icons.calendar_month_outlined, [
+        _card('shifts', 'Ca làm', Icons.calendar_month_outlined, [
           ('Tổng số ca', '${i(s['total'])}'),
           ('Chưa bắt đầu', '${i(s['scheduled'])}'),
           ('Đang diễn ra', '${i(s['in_progress'])}'),
@@ -101,28 +126,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ('Lượt phân ca', '${i(s['assignments'])}'),
           ('Ca còn thiếu người', '${i(s['understaffed'])}'),
         ]),
-        _card('Điểm danh', Icons.fingerprint, [
+        _card('attendance', 'Điểm danh', Icons.fingerprint, [
           ('Bảng công', '${i(a['records'])}'),
           ('Đúng giờ', '${i(a['on_time'])}'),
           ('Đi muộn', '${i(a['late'])}'),
           ('Chưa ra ca', '${i(a['missing_check_out'])}'),
           ('Ngoại lệ chờ duyệt', '${i(a['pending_exceptions'])}'),
         ]),
-        _card('Nghỉ phép', Icons.beach_access_outlined, [
+        _card('leave', 'Nghỉ phép', Icons.beach_access_outlined, [
           ('Chờ duyệt', '${i(l['pending'])}'),
           ('Đã duyệt', '${i(l['approved'])}'),
           ('Từ chối', '${i(l['rejected'])}'),
           ('Số ngày đã duyệt', days(i(l['approved_minutes']))),
         ]),
-        _card('Giờ làm', Icons.schedule, [
+        _card('hours', 'Giờ làm', Icons.schedule, [
           ('Tổng giờ làm', hours(i(h['worked_minutes']))),
           ('Tăng ca', hours(i(h['overtime_minutes']))),
           ('Đi muộn', hours(i(h['late_minutes']))),
         ]),
-        _card('Lương', Icons.account_balance_wallet_outlined, [
+        _card('payroll', 'Lương', Icons.account_balance_wallet_outlined, [
           ('Phiếu lương', '${i(p['payslips'])}'),
-          ('Nháp / Đã duyệt / Đã trả',
-              '${i(p['draft'])} / ${i(p['approved'])} / ${i(p['paid'])}'),
+          (
+            'Nháp / Đã duyệt / Đã trả',
+            '${i(p['draft'])} / ${i(p['approved'])} / ${i(p['paid'])}',
+          ),
           ('Tổng lương (cơ bản + tăng ca)', vnd(i(p['gross_vnd']))),
         ]),
       ],

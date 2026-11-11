@@ -90,7 +90,12 @@ void main() {
         expect(find.text('Tổng nhân viên'), findsOneWidget);
         expect(find.text('Đã điểm danh'), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await tester.ensureVisible(find.text('Cần xử lý'));
+        // Các chip lọc nằm dưới các ô thống kê nên cần cuộn tới trước khi bấm.
+        await tester.scrollUntilVisible(
+          find.text('Cần xử lý'),
+          100,
+          scrollable: find.byType(Scrollable).first,
+        );
         await tester.tap(find.text('Cần xử lý'));
         await tester.pumpAndSettle();
         expect(find.text('Nhân viên đúng giờ'), findsNothing);

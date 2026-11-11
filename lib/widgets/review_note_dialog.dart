@@ -6,13 +6,20 @@ Future<String?> askReviewNote(
   BuildContext context, {
   required bool approve,
   required String label,
+  String subject = 'điểm danh',
 }) => showDialog<String>(
   context: context,
-  builder: (_) => _ReviewNoteDialog(approve: approve, label: label),
+  builder: (_) =>
+      _ReviewNoteDialog(approve: approve, label: label, subject: subject),
 );
 
 class _ReviewNoteDialog extends StatefulWidget {
-  const _ReviewNoteDialog({required this.approve, required this.label});
+  const _ReviewNoteDialog({
+    required this.approve,
+    required this.label,
+    required this.subject,
+  });
+  final String subject;
   final bool approve;
   final String label;
 
@@ -34,7 +41,7 @@ class _ReviewNoteDialogState extends State<_ReviewNoteDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(
-      '${widget.approve ? 'Duyệt' : 'Từ chối'} điểm danh ${widget.label}',
+      '${widget.approve ? 'Duyệt' : 'Từ chối'} ${widget.subject} ${widget.label}',
     ),
     content: TextField(
       key: const Key('review-note'),

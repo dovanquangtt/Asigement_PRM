@@ -17,7 +17,7 @@ extension WorkforceOperations on WorkforceRepository {
     );
     if (rows.isEmpty) {
       throw const AuthException(
-        'Tài khoản chưa được liên kết hồ sơ nhân viên đang làm việc.',
+        'Tài khoản chưa được liên kết hồ sơ nhân viên. Hãy nhờ Admin liên kết ở mục Tài khoản.',
       );
     }
     return rows.single;
@@ -325,7 +325,8 @@ extension WorkforceOperations on WorkforceRepository {
         throw const AuthException('Không thể sửa ca đã có chấm công.');
       }
       final changedTime =
-          sqlTime(start) != shift['starts_at'] || sqlTime(end) != shift['ends_at'];
+          sqlTime(start) != shift['starts_at'] ||
+          sqlTime(end) != shift['ends_at'];
       final updated = {
         ...shift,
         'starts_at': sqlTime(start),
@@ -355,7 +356,11 @@ extension WorkforceOperations on WorkforceRepository {
       if (changedTime) {
         await tx.update(
           'shift_assignments',
-          {'response_status': 'pending', 'responded_at': null, 'response_note': null},
+          {
+            'response_status': 'pending',
+            'responded_at': null,
+            'response_note': null,
+          },
           where: "shift_id=? AND status='assigned'",
           whereArgs: [shiftId],
         );
@@ -534,6 +539,7 @@ extension WorkforceOperations on WorkforceRepository {
         a.response_status,
         a.responded_at,
         a.response_note,
+        a.assigned_at,
         (SELECT GROUP_CONCAT(e2.full_name, ', ')
          FROM shift_assignments a2
          JOIN employees e2 ON e2.id=a2.employee_id
@@ -551,7 +557,13 @@ extension WorkforceOperations on WorkforceRepository {
          ORDER BY id DESC LIMIT 1) AS closure_status,
         r.check_in_at,
         r.check_out_at,
-        r.attendance_state
+        r.attendance_state,
+        (SELECT COUNT(*)
+         FROM attendance_events ev
+         WHERE ev.assignment_id=a.id AND ev.result='pending_review') AS pending_events,
+        (SELECT COUNT(*)
+         FROM attendance_events ev
+         WHERE ev.assignment_id=a.id AND ev.result='rejected') AS rejected_events
       FROM shift_assignments a
       JOIN shifts s ON s.id=a.shift_id
       JOIN branches b ON b.id=s.branch_id
@@ -1106,17 +1118,6 @@ extension WorkforceOperations on WorkforceRepository {
     );
   }
 
-  Future<List<RowData>> swapOptions(int assignmentId) async {
-    final db = await _open();
-    await _require(db, 'swaps.self');
-    final me = await _me(db);
-    final from = (await txOwnAssignment(db, assignmentId, me['id'] as int));
-    return db.rawQuery(
-      "SELECT a.id,s.starts_at,s.ends_at,e.full_name FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id JOIN users u ON u.id=e.user_id AND u.is_active=1 WHERE e.status='active' AND a.employee_id<>? AND a.status='assigned' AND s.status='scheduled' AND s.branch_id=? AND s.starts_at>? ORDER BY s.starts_at",
-      [me['id'], from['branch_id'], sqlTime(DateTime.now())],
-    );
-  }
-
   Future<RowData> txOwnAssignment(
     DatabaseExecutor db,
     int id,
@@ -1145,64 +1146,6 @@ extension WorkforceOperations on WorkforceRepository {
     )).firstOrNull?['full_name'];
     throw AuthException(
       'Nhân viên ${name ?? ''} chưa có tài khoản hoạt động nên không thể đổi ca.',
-    );
-  }
-
-  Future<void> requestSwap(int from, int to, String reason) async {
-    if (reason.trim().isEmpty || from == to) {
-      throw const AuthException('Chọn ca khác và nhập lý do.');
-    }
-    final db = await _open();
-    await db.transaction((tx) async {
-      await _require(tx, 'swaps.self');
-      final me = await _me(tx);
-      final own = await txOwnAssignment(tx, from, me['id'] as int);
-      final target = (await tx.rawQuery(
-        "SELECT a.*,s.starts_at,s.branch_id FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id WHERE a.id=? AND a.status='assigned' AND s.status='scheduled'",
-        [to],
-      )).firstOrNull;
-      if (target == null ||
-          target['employee_id'] == me['id'] ||
-          target['branch_id'] != own['branch_id'] ||
-          utcTime(target['starts_at']).isBefore(DateTime.now().toUtc()) ||
-          utcTime(own['starts_at']).isBefore(DateTime.now().toUtc())) {
-        throw const AuthException(
-          'Chỉ đổi ca tương lai với nhân viên khác cùng chi nhánh.',
-        );
-      }
-      await _requireAccount(tx, target['employee_id'] as int);
-      if ((await tx.rawQuery(
-        "SELECT id FROM shift_swap_requests WHERE status='pending' AND (from_assignment_id IN (?,?) OR to_assignment_id IN (?,?)) LIMIT 1",
-        [from, to, from, to],
-      )).isNotEmpty) {
-        throw const AuthException('Ca này đang có yêu cầu đổi ca chờ xử lý.');
-      }
-      final requestId = await tx.insert('shift_swap_requests', {
-        'from_assignment_id': from,
-        'to_assignment_id': to,
-        'requested_by': session.userId,
-        'from_employee_id': own['employee_id'],
-        'to_employee_id': target['employee_id'],
-        'reason': reason.trim(),
-      });
-      await _notify(
-        tx,
-        await _employeeUsers(tx, [target['employee_id'] as int]),
-        'Yêu cầu đổi ca mới',
-        reason.trim(),
-        'shift_swap_requests',
-        requestId,
-      );
-    });
-  }
-
-  Future<List<RowData>> swaps() async {
-    final db = await _open();
-    final managing = await _can(db, 'swaps.review');
-    if (!managing) await _require(db, 'swaps.self');
-    return db.rawQuery(
-      'SELECT r.*,f.full_name AS from_name,t.full_name AS to_name,tf.user_id AS target_user_id,sf.starts_at AS from_start,st.starts_at AS to_start FROM shift_swap_requests r JOIN shift_assignments af ON af.id=r.from_assignment_id JOIN shift_assignments at ON at.id=r.to_assignment_id JOIN employees f ON f.id=r.from_employee_id JOIN employees t ON t.id=r.to_employee_id JOIN employees tf ON tf.id=r.to_employee_id JOIN shifts sf ON sf.id=af.shift_id JOIN shifts st ON st.id=at.shift_id ${managing ? '' : 'WHERE r.requested_by=? OR tf.user_id=? '}ORDER BY r.id DESC',
-      managing ? [] : [session.userId, session.userId],
     );
   }
 
@@ -1403,7 +1346,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     final db = await _open();
     await _require(db, 'payslips.self');
     return db.rawQuery(
-      'SELECT p.*,pol.overtime_multiplier,'
+      'SELECT p.*,pol.overtime_multiplier,pol.insurance_rate_bp,'
       '(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id) AS payslip_count,'
       "(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id AND s.status='approved') AS approved_count,"
       "(SELECT COUNT(*) FROM payslips s WHERE s.period_id=p.id AND s.status='paid') AS paid_count "
@@ -1427,12 +1370,15 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     String code,
     DateTime start,
     DateTime end,
-    double multiplier,
-  ) async {
+    double multiplier, {
+    int insuranceRateBp = 800,
+  }) async {
     if (code.trim().isEmpty ||
         end.isBefore(start) ||
         !multiplier.isFinite ||
-        multiplier < 1) {
+        multiplier < 1 ||
+        insuranceRateBp < 0 ||
+        insuranceRateBp > 10000) {
       throw const AuthException('Kỳ lương hoặc hệ số tăng ca không hợp lệ.');
     }
     final db = await _open();
@@ -1446,6 +1392,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
       await tx.insert('payroll_policies', {
         'period_id': id,
         'overtime_multiplier': multiplier,
+        'insurance_rate_bp': insuranceRateBp,
         'created_by': session.userId,
       });
       return id;
@@ -1485,12 +1432,9 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     return db.transaction((tx) async {
       final managing = await _can(tx, 'payroll.manage');
       if (!managing) {
-        await _require(tx, 'payslips.self');
-        final me = await _me(tx);
-        if (employeeId != null && employeeId != me['id']) {
-          throw const AuthException('Chỉ tính phiếu lương của chính mình.');
-        }
-        employeeId = me['id'] as int;
+        throw const AuthException(
+          'Chỉ quản lý mới tính lương. Bạn có thể xem lương tạm tính ở mục Bảng lương.',
+        );
       }
       final p = (await tx.rawQuery(
         'SELECT p.*,pol.overtime_multiplier FROM payroll_periods p JOIN payroll_policies pol ON pol.period_id=p.id WHERE p.id=?',
@@ -1608,6 +1552,30 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
           await tx.update('payslips', values, where: 'id=?', whereArgs: [id]);
         }
         if (!managing) employeePayslipId = id;
+        // Bảo hiểm theo tỷ lệ của kỳ nếu quản lý chưa nhập khoản bảo hiểm nào cho phiếu.
+        final rate =
+            (await tx.query(
+                  'payroll_policies',
+                  columns: ['insurance_rate_bp'],
+                  where: 'period_id=?',
+                  whereArgs: [periodId],
+                )).single['insurance_rate_bp']
+                as int;
+        if (rate > 0 &&
+            (await tx.query(
+              'payslip_items',
+              columns: ['id'],
+              where: "payslip_id=? AND item_type='insurance'",
+              whereArgs: [id],
+            )).isEmpty) {
+          await tx.insert('payslip_items', {
+            'payslip_id': id,
+            'code': 'BHXH',
+            'name': 'Bảo hiểm (${rate / 100}%)',
+            'item_type': 'insurance',
+            'amount_vnd': base * rate ~/ 10000,
+          });
+        }
         final totals = (await tx.query(
           'v_payslip_totals',
           where: 'id=?',
@@ -1927,22 +1895,12 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     });
   }
 
-  Future<List<RowData>> stars() async {
-    final db = await _open();
-    final managing = await _can(db, 'stars.award');
-    if (!managing) await _require(db, 'stars.self');
-    return db.rawQuery(
-      'SELECT v.* FROM v_employee_stars v JOIN employees e ON e.id=v.employee_id ${managing ? '' : 'WHERE e.user_id=?'} ORDER BY total_stars DESC',
-      managing ? [] : [session.userId],
-    );
-  }
-
   Future<List<RowData>> closures() async {
     final db = await _open();
     final managing = await _can(db, 'closures.review');
     if (!managing) await _require(db, 'closures.self');
     final rows = await db.rawQuery(
-      'SELECT c.*,e.full_name FROM shift_closures c JOIN shift_assignments a ON a.id=c.assignment_id JOIN employees e ON e.id=a.employee_id ${managing ? '' : 'WHERE e.user_id=?'} ORDER BY c.id DESC',
+      'SELECT c.*,e.full_name,s.starts_at,s.ends_at,b.name branch_name,ru.username reviewer FROM shift_closures c JOIN shift_assignments a ON a.id=c.assignment_id JOIN employees e ON e.id=a.employee_id JOIN shifts s ON s.id=a.shift_id JOIN branches b ON b.id=s.branch_id LEFT JOIN users ru ON ru.id=c.reviewed_by ${managing ? '' : 'WHERE e.user_id=?'} ORDER BY c.id DESC',
       managing ? [] : [session.userId],
     );
     final result = <RowData>[];
@@ -1959,6 +1917,32 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     return result;
   }
 
+  /// Các ca của tôi cần gửi (hoặc gửi lại) báo cáo đóng ca: đã vào ca, chưa có báo cáo hoặc bị từ chối.
+  /// `ready` = đã điểm danh ra ca nên gửi được; ngược lại `blocked` giải thích còn thiếu gì.
+  Future<List<RowData>> closureTasks() async {
+    final db = await _open();
+    await _require(db, 'closures.self');
+    final rows = await db.rawQuery(
+      "SELECT a.id assignment_id,s.starts_at,s.ends_at,b.name branch_name,c.status closure_status,c.review_note,"
+      "r.check_in_at,r.check_out_at FROM shift_assignments a JOIN employees e ON e.id=a.employee_id "
+      "JOIN shifts s ON s.id=a.shift_id JOIN branches b ON b.id=s.branch_id "
+      "JOIN attendance_records r ON r.assignment_id=a.id LEFT JOIN shift_closures c ON c.assignment_id=a.id "
+      "WHERE e.user_id=? AND a.status='assigned' AND s.status<>'cancelled' AND r.check_in_at IS NOT NULL "
+      "AND (c.id IS NULL OR c.status='rejected') ORDER BY s.starts_at DESC",
+      [session.userId],
+    );
+    return [
+      for (final r in rows)
+        {
+          ...r,
+          'ready': r['check_out_at'] != null,
+          'blocked': r['check_out_at'] != null
+              ? null
+              : await _closureBlocker(db, r['assignment_id'] as int),
+        },
+    ];
+  }
+
   /// Lý do chưa đóng ca được (giải thích cụ thể cho nhân viên) khi chưa có giờ ra đã ghi công.
   Future<String> _closureBlocker(DatabaseExecutor db, int assignmentId) async {
     Future<bool> has(String type, String result) async => (await db.query(
@@ -1973,7 +1957,8 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
       where: 'assignment_id=?',
       whereArgs: [assignmentId],
     )).firstOrNull;
-    if (record?['check_in_at'] == null && await has('check_in', 'pending_review')) {
+    if (record?['check_in_at'] == null &&
+        await has('check_in', 'pending_review')) {
       return 'Lượt vào ca đang chờ quản lý duyệt. Hãy chờ được duyệt, sau đó điểm danh ra ca.';
     }
     if (await has('check_out', 'pending_review')) {
@@ -2080,7 +2065,10 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
   }
 
   /// Duyệt từng báo cáo; ca chung chỉ đóng sau khi hết phân ca chưa hoàn tất.
-  Future<void> reviewClosure(int id, bool approve) async {
+  Future<void> reviewClosure(int id, bool approve, {String? note}) async {
+    if (!approve && (note ?? '').trim().isEmpty) {
+      throw const AuthException('Nhập lý do từ chối báo cáo đóng ca.');
+    }
     final db = await _open();
     await db.transaction((tx) async {
       await _require(tx, 'closures.review');
@@ -2106,6 +2094,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
           'status': approve ? 'approved' : 'rejected',
           'reviewed_by': session.userId,
           'reviewed_at': sqlTime(DateTime.now()),
+          'review_note': (note ?? '').trim().isEmpty ? null : note!.trim(),
         },
         where: 'id=?',
         whereArgs: [id],
@@ -2142,7 +2131,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
         'Kết quả báo cáo đóng ca',
         approve
             ? 'Báo cáo đóng ca đã được duyệt.'
-            : 'Báo cáo bị từ chối. Bạn có thể bổ sung và gửi lại.',
+            : 'Báo cáo bị từ chối: ${note!.trim()}. Bạn có thể bổ sung và gửi lại.',
         'shift_closures',
         id,
       );

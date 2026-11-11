@@ -16,11 +16,15 @@ Future<String> payrollSourceHash(
     where: 'id=?',
     whereArgs: [periodId],
   )).single;
-  final policy = await tx.query(
-    'payroll_policies',
-    where: 'period_id=?',
-    whereArgs: [periodId],
-  );
+  // Tỷ lệ bảo hiểm (thêm ở v8) không đổi số tiền đã lưu nên không nằm trong dấu vân tay.
+  final policy = [
+    for (final row in await tx.query(
+      'payroll_policies',
+      where: 'period_id=?',
+      whereArgs: [periodId],
+    ))
+      {...row}..remove('insurance_rate_bp'),
+  ];
   final contract = await tx.query(
     'contracts',
     where: 'employee_id=? OR id=?',

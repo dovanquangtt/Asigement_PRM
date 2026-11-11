@@ -13,9 +13,13 @@ import 'operations_screen.dart';
 import 'notifications_screen.dart';
 import 'attendance_management_screen.dart';
 import 'dashboard_screen.dart';
+import 'employee_attendance_history_screen.dart';
+import 'shift_swap_screen.dart';
 import 'employee_shift_table_screen.dart';
-import 'payroll_screen.dart';
+import 'payroll/my_payroll_screen.dart';
 import 'schedule_screen.dart';
+import 'closures_screen.dart';
+import 'home_view.dart';
 
 class Workspace extends StatefulWidget {
   const Workspace({
@@ -113,6 +117,12 @@ class _WorkspaceState extends State<Workspace> {
             ? EmployeeShiftTableScreen(repository: repository)
             : kind == 'dashboard'
             ? DashboardScreen(repository: repository)
+            : kind == 'closures'
+            ? ClosuresScreen(repository: repository)
+            : kind == 'swaps'
+            ? ShiftSwapScreen(repository: repository)
+            : kind == 'attendance'
+            ? EmployeeAttendanceHistoryScreen(repository: repository)
             : kind == 'attendance_review' || kind == 'attendance_management'
             ? AttendanceManagementScreen(
                 repository: repository,
@@ -221,6 +231,7 @@ class _WorkspaceState extends State<Workspace> {
   Timer? _poller;
   int? _lastNotificationId;
   int unread = 0;
+  int _scheduleReload = 0;
 
   /// Kiểm tra thông báo mới và hiện ngay trên màn hình đang mở.
   Future<void> _pollNotifications() async {
@@ -238,6 +249,8 @@ class _WorkspaceState extends State<Workspace> {
       setState(() {
         _lastNotificationId = newest;
         unread = unreadRows.length;
+        // Có thông báo mới (ví dụ vừa được phân ca): bảng "Lịch ca" tự tải lại.
+        if (fresh.isNotEmpty) _scheduleReload++;
       });
       if (fresh.isNotEmpty) {
         _announce(fresh);
@@ -260,7 +273,9 @@ class _WorkspaceState extends State<Workspace> {
       );
     }
     final top = fresh.first;
-    final more = fresh.length > 1 ? '\n(+${fresh.length - 1} thông báo khác)' : '';
+    final more = fresh.length > 1
+        ? '\n(+${fresh.length - 1} thông báo khác)'
+        : '';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -269,7 +284,9 @@ class _WorkspaceState extends State<Workspace> {
           backgroundColor: green,
           duration: const Duration(seconds: 10),
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           content: Row(
             children: [
               const Icon(Icons.notifications_active, color: Colors.white),
@@ -330,7 +347,53 @@ class _WorkspaceState extends State<Workspace> {
       context: context,
       builder: (_) => _CreateDialog(repository: repository, account: account),
     );
-    if (saved == true && mounted) await refresh();
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            account
+                ? 'Đã tạo tài khoản. Đăng nhập được ngay và dùng đủ chức năng.'
+                : 'Đã thêm nhân viên. Sang mục Tài khoản để cấp tài khoản đăng nhập.',
+          ),
+        ),
+      );
+      await refresh();
+    }
+  }
+
+  /// Tài khoản cũ chưa có hồ sơ: chọn một hồ sơ nhân viên chưa có tài khoản để liên kết.
+  Future<void> linkProfile(RowData account) async {
+    final candidates = await repository.employeesWithoutAccount();
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Chưa có hồ sơ nào để liên kết. Hãy thêm nhân viên ở mục Nhân sự trước.',
+          ),
+        ),
+      );
+      return;
+    }
+    await featureForm(
+      context,
+      'Liên kết hồ sơ cho ${account['username']}',
+      [
+        InputSpec(
+          'employee',
+          'Hồ sơ nhân viên',
+          options: {
+            for (final e in candidates)
+              '${e['id']}': '${e['full_name']} • ${e['employee_code']}',
+          },
+        ),
+      ],
+      (v) => repository.linkEmployee(
+        int.parse(v['employee']!),
+        account['id'] as int,
+      ),
+    );
+    if (mounted) await refresh();
   }
 
   Future<void> editEmployee(RowData row) async {
@@ -386,9 +449,8 @@ class _WorkspaceState extends State<Workspace> {
     try {
       await repository.deleteEmployee(row['id'] as int);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã xóa nhân viên.')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Đã xóa nhân viên.')));
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -397,7 +459,9 @@ class _WorkspaceState extends State<Workspace> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không xóa được nhân viên. Hãy thử lại.')),
+          const SnackBar(
+            content: Text('Không xóa được nhân viên. Hãy thử lại.'),
+          ),
         );
       }
     }
@@ -411,76 +475,90 @@ class _WorkspaceState extends State<Workspace> {
   List<Widget> content(Object data) {
     if (current == 'home') {
       final row = data as RowData;
+      final staff = widget.session.role != 'Nhân viên';
       return [
-        heading(
-          'Chào ${widget.session.displayName}',
-          widget.session.role.toUpperCase(),
-        ),
-        panel(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                switch (widget.session.role) {
-                  'Admin' => 'Quản trị tài khoản và nhân sự nhà hàng',
-                  'Quản lý' => 'Theo dõi đội ngũ, lịch ca và bảng lương',
-                  _ => 'Lịch làm việc và thu nhập của bạn',
-                },
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w700,
-                ),
+        HomeView(
+          session: widget.session,
+          repository: repository,
+          overview: row,
+          onOpen: openFeature,
+          onTab: (key) {
+            final index = destinations.indexWhere((d) => d.$3 == key);
+            if (index >= 0) {
+              setState(() {
+                tab = index;
+                loading = load();
+              });
+            }
+          },
+          features: [
+            // Quản lý/Admin quản lý ca và phân ca; nhân viên xem lịch ở tab "Lịch ca".
+            if (staff)
+              const HomeFeature(
+                'schedule',
+                'Lịch ca, phân ca & điểm danh',
+                Icons.edit_calendar_outlined,
               ),
-              const SizedBox(height: 16),
-              if (row['employees'] != null)
-                money('Nhân viên đang làm', value(row, 'employees')),
-              money(
-                widget.session.role == 'Nhân viên'
-                    ? 'Phân ca của bạn'
-                    : 'Phân ca đã lưu',
-                value(row, 'shifts'),
+            if (staff)
+              const HomeFeature(
+                'payroll',
+                'Kỳ lương & tính lương',
+                Icons.payments_outlined,
               ),
-              money(
-                widget.session.role == 'Nhân viên'
-                    ? 'Phiếu lương của bạn'
-                    : 'Phiếu lương đã lưu',
-                value(row, 'payslips'),
+            const HomeFeature('swaps', 'Đổi ca', Icons.swap_horiz_rounded),
+            const HomeFeature(
+              'closures',
+              'Ảnh & báo cáo đóng ca',
+              Icons.photo_camera_outlined,
+            ),
+            const HomeFeature(
+              'attendance',
+              'Lịch sử điểm danh',
+              Icons.history_rounded,
+            ),
+            if (staff)
+              const HomeFeature(
+                'attendance_review',
+                'Quản lý chấm công & ngoại lệ',
+                Icons.fact_check_outlined,
+              ),
+            if (!staff)
+              const HomeFeature(
+                'attendance_management',
+                'Công của tôi & yêu cầu sửa công',
+                Icons.timer_outlined,
+              ),
+            if (staff)
+              const HomeFeature(
+                'shift_table',
+                'Bảng ca theo từng nhân viên',
+                Icons.table_chart_outlined,
+              ),
+            if (staff)
+              const HomeFeature(
+                'leave_review',
+                'Duyệt nghỉ phép',
+                Icons.beach_access_outlined,
+              ),
+            if (staff)
+              const HomeFeature(
+                'dashboard',
+                'Dashboard thống kê',
+                Icons.insights_outlined,
+              ),
+            if (staff) ...const [
+              HomeFeature(
+                'devices',
+                'Duyệt thiết bị nhân viên',
+                Icons.phone_android_outlined,
+              ),
+              HomeFeature(
+                'branches',
+                'Cấu hình GPS & Wi-Fi chi nhánh',
+                Icons.location_on_outlined,
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        section('Chức năng'),
-        for (final feature in [
-          ('schedule', 'Lịch ca, phân ca & điểm danh'),
-          ('payroll', 'Tính lương & kiểm tra 6 bước'),
-          ('swaps', 'Đổi ca'),
-          ('stars', 'Sao nhân viên'),
-          ('closures', 'Ảnh & báo cáo đóng ca'),
-          ('attendance', 'Lịch sử điểm danh'),
-          if (widget.session.role != 'Nhân viên')
-            ('attendance_review', 'Quản lý chấm công & ngoại lệ'),
-          if (widget.session.role == 'Nhân viên')
-            ('attendance_management', 'Công của tôi & yêu cầu sửa công'),
-          if (widget.session.role != 'Nhân viên')
-            ('shift_table', 'Bảng ca theo từng nhân viên'),
-          if (widget.session.role != 'Nhân viên')
-            ('leave_review', 'Duyệt nghỉ phép'),
-          if (widget.session.role != 'Nhân viên')
-            ('dashboard', 'Dashboard thống kê'),
-          if (widget.session.role != 'Nhân viên') ...[
-            ('devices', 'Duyệt thiết bị nhân viên'),
-            ('branches', 'Cấu hình GPS & Wi-Fi chi nhánh'),
           ],
-        ])
-          ListTile(
-            title: Text(feature.$2),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => openFeature(feature.$1),
-          ),
-        const Text(
-          'Kéo xuống để cập nhật dữ liệu.',
-          style: TextStyle(color: muted),
         ),
       ];
     }
@@ -572,8 +650,18 @@ class _WorkspaceState extends State<Workspace> {
               leading: const Icon(Icons.person_outline, color: green),
               title: Text(value(row, 'username')),
               subtitle: Text(
-                '${value(row, 'roles')} • ${row['is_active'] == 1 ? 'Hoạt động' : 'Đã khóa'}',
+                '${value(row, 'roles')} • ${row['is_active'] == 1 ? 'Hoạt động' : 'Đã khóa'}'
+                '\n${row['employee_id'] != null ? 'Hồ sơ: ${row['employee_name']}' : (value(row, 'roles').contains('Admin') ? 'Tài khoản quản trị' : 'Chưa có hồ sơ nhân viên')}',
               ),
+              trailing:
+                  row['employee_id'] == null &&
+                      !value(row, 'roles').contains('Admin')
+                  ? TextButton(
+                      key: Key('link-profile-${row['id']}'),
+                      onPressed: () => linkProfile(row),
+                      child: const Text('Liên kết hồ sơ'),
+                    )
+                  : null,
             ),
             'employees' => ListTile(
               onTap: () => employeeContract(row),
@@ -674,7 +762,10 @@ class _WorkspaceState extends State<Workspace> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 650),
           child: current == 'shifts'
-              ? ScheduleScreen(repository: repository)
+              ? ScheduleScreen(
+                  repository: repository,
+                  reloadToken: _scheduleReload,
+                )
               : FutureBuilder<Object>(
                   future: loading,
                   builder: (context, snapshot) {
@@ -708,21 +799,9 @@ class _WorkspaceState extends State<Workspace> {
                     }
                     if (current == 'payroll' &&
                         widget.session.role == 'Nhân viên') {
-                      return EmployeePayrollScreen(
-                        payslips: snapshot.data! as List<RowData>,
+                      return MyPayrollScreen(
+                        repository: repository,
                         onRefresh: refresh,
-                        onCheckPayroll: () => openFeature('payroll'),
-                        onOpen: (row) {
-                          Navigator.push<void>(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => PayDetailPage(
-                                repository: repository,
-                                id: row['id'] as int,
-                              ),
-                            ),
-                          );
-                        },
                       );
                     }
                     return RefreshIndicator(
@@ -763,19 +842,67 @@ class _CreateDialog extends StatefulWidget {
   State<_CreateDialog> createState() => _CreateDialogState();
 }
 
+/// Luồng thêm người gồm hai bước tách biệt:
+/// 1) "Thêm nhân viên" (mục Nhân sự) tạo hồ sơ đầy đủ; 2) "Tạo tài khoản" (mục Tài khoản) chọn một
+/// hồ sơ chưa có tài khoản rồi cấp tên đăng nhập, mật khẩu, vai trò. Tài khoản luôn gắn với hồ sơ có sẵn
+/// nên đăng nhập là dùng được mọi chức năng.
 class _CreateDialogState extends State<_CreateDialog> {
   final form = GlobalKey<FormState>();
-  final first = TextEditingController();
-  final second = TextEditingController();
+  final code = TextEditingController();
+  final name = TextEditingController();
   final phone = TextEditingController();
+  final username = TextEditingController();
+  final password = TextEditingController();
+  final salary = TextEditingController(text: '12480000');
   String role = 'employee';
+  int? branchId;
+  int? employeeId;
+  List<RowData> branches = const [];
+  List<RowData> candidates = const [];
+  bool loaded = false;
   bool busy = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = widget.account
+          ? await widget.repository.employeesWithoutAccount()
+          : await widget.repository.branches();
+      if (!mounted) return;
+      setState(() {
+        loaded = true;
+        if (widget.account) {
+          candidates = rows;
+          employeeId = rows.isEmpty ? null : rows.first['id'] as int;
+        } else {
+          branches = rows;
+          branchId = rows.isEmpty ? null : rows.first['id'] as int;
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          loaded = true;
+          error = 'Không tải được dữ liệu. Hãy đóng và thử lại.';
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
-    first.dispose();
-    second.dispose();
+    code.dispose();
+    name.dispose();
     phone.dispose();
+    username.dispose();
+    password.dispose();
+    salary.dispose();
     super.dispose();
   }
 
@@ -787,16 +914,20 @@ class _CreateDialogState extends State<_CreateDialog> {
     });
     try {
       if (widget.account) {
-        await widget.repository.createUser(
-          username: first.text,
-          password: second.text,
+        await widget.repository.createAccountForEmployee(
+          employeeId: employeeId!,
+          username: username.text,
+          password: password.text,
           role: role,
         );
       } else {
+        final pay = salary.text.replaceAll(RegExp(r'[^0-9]'), '');
         await widget.repository.createEmployee(
-          code: first.text,
-          name: second.text,
+          code: code.text,
+          name: name.text,
           phone: phone.text,
+          branchId: branchId,
+          monthlySalary: pay.isEmpty ? null : int.parse(pay),
         );
       }
       if (mounted) Navigator.pop(context, true);
@@ -811,93 +942,175 @@ class _CreateDialogState extends State<_CreateDialog> {
     }
   }
 
+  String? _required(String? v) =>
+      v == null || v.trim().isEmpty ? 'Không được để trống' : null;
+
+  List<Widget> _accountFields() {
+    if (candidates.isEmpty) {
+      return const [
+        Text(
+          'Chưa có nhân viên nào cần tài khoản. Hãy thêm nhân viên ở mục Nhân sự trước (bước 1), rồi quay lại tạo tài khoản (bước 2).',
+          key: Key('account-no-employee'),
+        ),
+      ];
+    }
+    return [
+      const Text('Bước 2: cấp tài khoản cho nhân viên đã có hồ sơ.'),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<int>(
+        key: const Key('account-employee'),
+        initialValue: employeeId,
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: 'Nhân viên'),
+        items: [
+          for (final e in candidates)
+            DropdownMenuItem(
+              value: e['id'] as int,
+              child: Text(
+                '${e['full_name']} • ${e['employee_code']}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: busy ? null : (v) => setState(() => employeeId = v),
+      ),
+      const SizedBox(height: 12),
+      TextFormField(
+        key: const Key('account-username'),
+        controller: username,
+        enabled: !busy,
+        decoration: const InputDecoration(labelText: 'Tên đăng nhập'),
+        validator: _required,
+      ),
+      const SizedBox(height: 12),
+      TextFormField(
+        key: const Key('account-password'),
+        controller: password,
+        enabled: !busy,
+        obscureText: true,
+        decoration: const InputDecoration(
+          labelText: 'Mật khẩu (ít nhất 8 ký tự)',
+        ),
+        validator: _required,
+      ),
+      const SizedBox(height: 12),
+      // Admin không tạo được tài khoản Admin: chỉ Quản lý hoặc Nhân viên.
+      DropdownButtonFormField<String>(
+        key: const Key('account-role'),
+        initialValue: role,
+        decoration: const InputDecoration(labelText: 'Vai trò tài khoản'),
+        items: const [
+          DropdownMenuItem(value: 'manager', child: Text('Quản lý')),
+          DropdownMenuItem(value: 'employee', child: Text('Nhân viên')),
+        ],
+        onChanged: busy ? null : (v) => setState(() => role = v!),
+      ),
+    ];
+  }
+
+  List<Widget> _employeeFields() => [
+    const Text(
+      'Bước 1: tạo hồ sơ nhân viên. Tài khoản đăng nhập tạo sau ở mục Tài khoản.',
+    ),
+    const SizedBox(height: 12),
+    TextFormField(
+      key: const Key('employee-name'),
+      controller: name,
+      enabled: !busy,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(labelText: 'Họ tên'),
+      validator: _required,
+    ),
+    const SizedBox(height: 12),
+    TextFormField(
+      key: const Key('employee-code'),
+      controller: code,
+      enabled: !busy,
+      decoration: const InputDecoration(
+        labelText: 'Mã nhân viên (để trống để tự sinh)',
+      ),
+    ),
+    const SizedBox(height: 12),
+    TextFormField(
+      key: const Key('employee-phone'),
+      controller: phone,
+      enabled: !busy,
+      keyboardType: TextInputType.phone,
+      decoration: const InputDecoration(labelText: 'Điện thoại'),
+    ),
+    const SizedBox(height: 12),
+    DropdownButtonFormField<int>(
+      key: const Key('employee-branch'),
+      initialValue: branchId,
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Chi nhánh'),
+      items: [
+        for (final b in branches)
+          DropdownMenuItem(value: b['id'] as int, child: Text('${b['name']}')),
+      ],
+      onChanged: busy ? null : (v) => setState(() => branchId = v),
+    ),
+    const SizedBox(height: 12),
+    TextFormField(
+      key: const Key('employee-salary'),
+      controller: salary,
+      enabled: !busy,
+      keyboardType: TextInputType.number,
+      decoration: const InputDecoration(
+        labelText: 'Lương tháng VND',
+        helperText:
+            'Dùng để tạo hợp đồng và tính lương; xóa trắng nếu muốn tạo sau.',
+        helperMaxLines: 2,
+      ),
+    ),
+    const Padding(
+      padding: EdgeInsets.only(top: 12),
+      child: Text('Hồ sơ có sẵn 12 ngày phép năm, bộ phận Phục vụ.'),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !busy,
     child: AlertDialog(
       title: Text(widget.account ? 'Tạo tài khoản' : 'Thêm nhân viên'),
-      content: SingleChildScrollView(
-        child: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: first,
-                enabled: !busy,
-                decoration: InputDecoration(
-                  labelText: widget.account ? 'Tên đăng nhập' : 'Mã nhân viên',
-                ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Không được để trống'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: second,
-                enabled: !busy,
-                obscureText: widget.account,
-                decoration: InputDecoration(
-                  labelText: widget.account
-                      ? 'Mật khẩu (ít nhất 8 ký tự)'
-                      : 'Họ tên',
-                ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Không được để trống'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              if (widget.account)
-                DropdownButtonFormField<String>(
-                  initialValue: role,
-                  decoration: const InputDecoration(
-                    labelText: 'Vai trò tài khoản mới',
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                    DropdownMenuItem(value: 'manager', child: Text('Quản lý')),
-                    DropdownMenuItem(
-                      value: 'employee',
-                      child: Text('Nhân viên'),
-                    ),
+      content: !loaded
+          ? const SizedBox(
+              height: 80,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : SingleChildScrollView(
+              child: Form(
+                key: form,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ...(widget.account ? _accountFields() : _employeeFields()),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
                   ],
-                  onChanged: busy ? null : (v) => setState(() => role = v!),
-                )
-              else
-                TextFormField(
-                  controller: phone,
-                  enabled: !busy,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Điện thoại'),
                 ),
-              if (!widget.account)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12),
-                  child: Text(
-                    'Hồ sơ mới được tạo tại chi nhánh đầu tiên. Hồ sơ chưa liên kết tài khoản đăng nhập.',
-                  ),
-                ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+              ),
+            ),
       actions: [
         TextButton(
           onPressed: busy ? null : () => Navigator.pop(context),
           child: const Text('Hủy'),
         ),
         FilledButton(
-          onPressed: busy ? null : save,
+          key: const Key('create-save'),
+          onPressed: busy || !loaded || (widget.account && candidates.isEmpty)
+              ? null
+              : save,
           child: Text(busy ? 'Đang lưu…' : 'Lưu'),
         ),
       ],

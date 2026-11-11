@@ -62,8 +62,7 @@ class AttendanceRepository {
 
 /// User-facing Vietnamese text for an API failure.
 String attendanceErrorMessage(ApiException e) => switch (e.code) {
-  'DEVICE_NOT_REGISTERED' =>
-    'Thiết bị này chưa được đăng ký. Hãy đăng ký thiết bị và chờ quản lý duyệt.',
+  'DEVICE_NOT_REGISTERED' => 'Thiết bị này chưa được đăng ký. Hãy đăng ký thiết bị và chờ quản lý duyệt.',
   'DEVICE_REVOKED' =>
     'Thiết bị này đã bị thu hồi. Hãy liên hệ quản lý để dùng thiết bị khác.',
   'NO_SHIFT' => 'Hôm nay bạn chưa được phân ca làm việc.',
@@ -73,7 +72,8 @@ String attendanceErrorMessage(ApiException e) => switch (e.code) {
   'ATTENDANCE_LOCKED' => 'Bảng công đã chốt, không thể thay đổi.',
   'UNAUTHORIZED' => 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.',
   'NETWORK' || 'TIMEOUT' || 'NOT_CONFIGURED' => e.message,
-  _ => e.status >= 500
-      ? 'Máy chủ gặp lỗi. Hãy thử lại sau.'
-      : (e.message.isEmpty ? 'Không xử lý được yêu cầu.' : e.message),
+  _ =>
+    e.status >= 500
+        ? 'Máy chủ gặp lỗi. Hãy thử lại sau.'
+        : (e.message.isEmpty ? 'Không xử lý được yêu cầu.' : e.message),
 };

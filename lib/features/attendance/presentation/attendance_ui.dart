@@ -154,7 +154,10 @@ class SectionCard extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 title!,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
               ),
             ),
           ...children,
@@ -193,7 +196,10 @@ class VerificationBlock extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          SizedBox(width: 118, child: Text(label, style: const TextStyle(color: muted))),
+          SizedBox(
+            width: 118,
+            child: Text(label, style: const TextStyle(color: muted)),
+          ),
           Badge2(_verifyText(value), _verifyColor(value)),
         ],
       ),
@@ -218,7 +224,11 @@ class VerificationBlock extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange.shade800),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: Colors.orange.shade800,
+                ),
                 const SizedBox(width: 6),
                 Expanded(child: Text(w)),
               ],

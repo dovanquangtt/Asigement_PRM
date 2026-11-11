@@ -22,7 +22,7 @@ class PayrollChecksScreen extends StatelessWidget {
   }
 
   Color _statusColor(String status) => switch (status) {
-    'Đạt' => const Color(0xFF286B4F),
+    'Đạt' => const Color(0xFF0F766E),
     'Cần tính lại' => const Color(0xFF9A641B),
     _ => const Color(0xFF596B74),
   };

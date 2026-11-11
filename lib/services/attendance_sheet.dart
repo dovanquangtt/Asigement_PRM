@@ -120,8 +120,7 @@ extension AttendanceSheet on WorkforceRepository {
         'success': count('SUCCESS'),
         'pending_review': count('PENDING_REVIEW'),
         'rejected': count('REJECTED'),
-        'missing':
-            count('MISSING_CHECK_IN') + count('MISSING_CHECK_OUT'),
+        'missing': count('MISSING_CHECK_IN') + count('MISSING_CHECK_OUT'),
         'voided': count('VOIDED'),
         'worked_minutes': entries.fold<int>(
           0,
@@ -282,7 +281,10 @@ extension AttendanceSheet on WorkforceRepository {
 
   /// Hủy công: xóa giờ vào/ra và số phút, ghi trạng thái VOIDED. Nhân viên không tự
   /// điểm danh lại được; quản lý có thể khôi phục bằng cách chỉnh lại giờ công.
-  Future<void> voidAttendance(int assignmentId, {required String reason}) async {
+  Future<void> voidAttendance(
+    int assignmentId, {
+    required String reason,
+  }) async {
     if (reason.trim().isEmpty) {
       throw const AuthException('Nhập lý do hủy công.');
     }

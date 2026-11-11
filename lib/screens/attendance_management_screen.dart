@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
+import '../widgets/shift_timeline.dart';
 import 'attendance_sheet_screen.dart';
 
 String attendanceTime(Object? value) {
@@ -79,9 +80,13 @@ class AttendanceManagementScreen extends StatefulWidget {
     super.key,
     required this.repository,
     this.self = false,
+    this.initialDay,
   });
   final WorkforceRepository repository;
   final bool self;
+
+  /// Ngày hiển thị ban đầu (mặc định hôm nay).
+  final DateTime? initialDay;
   @override
   State<AttendanceManagementScreen> createState() =>
       _AttendanceManagementScreenState();
@@ -89,7 +94,7 @@ class AttendanceManagementScreen extends StatefulWidget {
 
 class _AttendanceManagementScreenState
     extends State<AttendanceManagementScreen> {
-  DateTime day = DateTime.now();
+  late DateTime day = widget.initialDay ?? DateTime.now();
   late Future<RowData> loading;
   String filter = 'all';
   bool busy = false;
@@ -107,6 +112,156 @@ class _AttendanceManagementScreenState
       loading = next;
     });
     await next;
+  }
+
+  void moveDay(int delta) {
+    day = DateTime(day.year, day.month, day.day + delta);
+    refresh();
+  }
+
+  static String _hm(Object? utc) {
+    if (utc == null) return 'Chưa có';
+    final d = utcTime(utc).toLocal();
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _tag(String text, Color color, {bool solid = false, Key? key}) =>
+      Container(
+        key: key,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: solid ? color : color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: solid ? Colors.white : color,
+            fontSize: solid ? 13 : 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+
+  /// Một ca của một nhân viên: trạng thái nổi bật (cùng bộ nhãn với lịch của nhân viên) cộng các
+  /// cảnh báo cần xử lý. Bấm để xem chi tiết và duyệt/từ chối điểm danh.
+  Widget statusCard(RowData row) {
+    final phase = shiftPhase(row, DateTime.now().toUtc());
+    final style = phaseStyle(phase);
+    final id = row['assignment_id'];
+    final extras = <(String, Color)>[
+      if (phase == ShiftPhase.absent)
+        ('Không điểm danh', const Color(0xFF8B3A12)),
+      if (row['arrival_status'] == 'LATE')
+        ('Muộn ${row['late_minutes']} phút', const Color(0xFF9C6C27)),
+      if (row['adjustment_id'] != null)
+        ('Chờ bổ sung / sửa công', const Color(0xFFAB583A)),
+      if (row['overtime_status'] == 'PENDING')
+        ('Chờ xác nhận tăng ca', const Color(0xFFAB583A)),
+      if (row['locked_at'] != null) ('Đã chốt công', const Color(0xFF5E7C78)),
+    ];
+    return Card(
+      key: ValueKey('attendance-row-$id'),
+      margin: const EdgeInsets.only(bottom: 10),
+      color: style.tint,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: style.color.withValues(alpha: 0.45),
+          width: 1.4,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        title: Text(
+          '${row['full_name']}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${row['branch_name']} • ${_hm(row['starts_at'])}–${_hm(row['ends_at'])}',
+              ),
+              Text(
+                'Giờ vào: ${_hm(row['check_in_at'])}   Giờ ra: ${_hm(row['check_out_at'])}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _tag(
+                    style.label,
+                    style.color,
+                    solid: true,
+                    key: Key('attendance-status-$id'),
+                  ),
+                  for (final e in extras) _tag(e.$1, e.$2),
+                ],
+              ),
+              if (phase == ShiftPhase.pendingReview)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Bấm để xem bằng chứng và duyệt hoặc từ chối.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF5E7C78)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => open(row),
+      ),
+    );
+  }
+
+  /// Nhân viên nghỉ phép đã duyệt trong ngày (không có ca để điểm danh).
+  Widget leaveCard(RowData leave) {
+    final reason = '${leave['reason'] ?? ''}'.trim();
+    return Card(
+      key: ValueKey('attendance-leave-${leave['leave_id']}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      color: leavePhaseStyle.tint,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: leavePhaseStyle.color.withValues(alpha: 0.45),
+          width: 1.4,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        title: Text(
+          '${leave['full_name']}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${leave['leave_type_name']}${reason.isEmpty ? '' : ' • $reason'}',
+              ),
+              const SizedBox(height: 8),
+              _tag(
+                leavePhaseStyle.label,
+                leavePhaseStyle.color,
+                solid: true,
+                key: Key('attendance-leave-status-${leave['leave_id']}'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   bool needs(RowData r) =>
@@ -223,19 +378,27 @@ class _AttendanceManagementScreenState
         }
         final data = snapshot.data!;
         final all = data['rows'] as List<RowData>;
-        final rows = all
-            .where(
-              (r) =>
-                  filter == 'all' ||
-                  filter == 'needs' && needs(r) ||
-                  filter == 'late' && r['arrival_status'] == 'LATE' ||
-                  filter == 'missing' &&
-                      [
-                        'MISSING_CHECK_IN',
-                        'MISSING_CHECK_OUT',
-                      ].contains(r['work_state']),
-            )
-            .toList();
+        final rows = filter == 'leave'
+            ? <RowData>[]
+            : all
+                  .where(
+                    (r) =>
+                        filter == 'all' ||
+                        filter == 'needs' && needs(r) ||
+                        filter == 'late' && r['arrival_status'] == 'LATE' ||
+                        filter == 'missing' &&
+                            [
+                              'MISSING_CHECK_IN',
+                              'MISSING_CHECK_OUT',
+                            ].contains(r['work_state']),
+                  )
+                  .toList();
+        final leaves = filter == 'all' || filter == 'leave'
+            ? (data['leaves'] as List<RowData>)
+            : <RowData>[];
+        final waiting = all
+            .where((r) => (r['pending_exceptions'] as int) > 0)
+            .length;
         return RefreshIndicator(
           onRefresh: refresh,
           child: ListView(
@@ -246,28 +409,47 @@ class _AttendanceManagementScreenState
                 widget.self
                     ? 'Theo dõi công, yêu cầu bổ sung và sửa giờ'
                     : 'Điểm danh hợp lệ tự ghi nhận. Chỉ xử lý ngoại lệ.',
-                style: const TextStyle(color: Color(0xFF657468)),
+                style: const TextStyle(color: Color(0xFF5E7C78)),
               ),
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: busy
-                    ? null
-                    : () async {
-                        final selected = await showDatePicker(
-                          context: context,
-                          initialDate: day,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2100),
-                        );
-                        if (selected != null && mounted) {
-                          day = selected;
-                          await refresh();
-                        }
-                      },
-                icon: const Icon(Icons.calendar_month),
-                label: Text(
-                  '${day.day}/${day.month}/${day.year} • Theo ngày bắt đầu ca (VN)',
-                ),
+              Row(
+                children: [
+                  IconButton(
+                    key: const Key('attendance-prev-day'),
+                    tooltip: 'Ngày trước',
+                    onPressed: busy ? null : () => moveDay(-1),
+                    icon: const Icon(Icons.chevron_left),
+                  ),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: busy
+                          ? null
+                          : () async {
+                              final selected = await showDatePicker(
+                                context: context,
+                                initialDate: day,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                              );
+                              if (selected != null && mounted) {
+                                day = selected;
+                                await refresh();
+                              }
+                            },
+                      icon: const Icon(Icons.calendar_month),
+                      label: Text(
+                        '${day.day}/${day.month}/${day.year}',
+                        key: const Key('attendance-day-label'),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('attendance-next-day'),
+                    tooltip: 'Ngày sau',
+                    onPressed: busy ? null : () => moveDay(1),
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               Row(
@@ -313,6 +495,28 @@ class _AttendanceManagementScreenState
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: stat(
+                      'Chờ duyệt điểm danh',
+                      waiting,
+                      Icons.hourglass_top_rounded,
+                      phaseStyle(ShiftPhase.pendingReview).color,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: stat(
+                      'Nghỉ phép',
+                      data['on_leave'],
+                      Icons.beach_access_rounded,
+                      leavePhaseStyle.color,
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 18),
               Wrap(
                 spacing: 8,
@@ -322,6 +526,7 @@ class _AttendanceManagementScreenState
                     ('needs', 'Cần xử lý'),
                     ('late', 'Đi muộn'),
                     ('missing', 'Thiếu giờ'),
+                    ('leave', 'Nghỉ phép'),
                   ])
                     ChoiceChip(
                       label: Text(item.$2),
@@ -331,30 +536,13 @@ class _AttendanceManagementScreenState
                 ],
               ),
               const SizedBox(height: 14),
-              if (rows.isEmpty)
+              if (rows.isEmpty && leaves.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(20),
                   child: Text('Không có dữ liệu phù hợp trong ngày đã chọn.'),
                 ),
-              for (final row in rows)
-                Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
-                    title: Text(
-                      '${row['full_name']}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        '${row['branch_name']} • ${attendanceTime(row['starts_at'])}\n${attendanceLabel(row['work_state'])}${row['arrival_status'] == 'LATE' ? ' • Muộn ${row['late_minutes']} phút' : ''}${row['adjustment_id'] != null ? '\nChờ bổ sung / sửa công' : ''}${row['overtime_status'] == 'PENDING' ? '\nChờ xác nhận tăng ca' : ''}${(row['pending_exceptions'] as int) > 0 ? '\nCó điểm danh bất thường' : ''}${row['locked_at'] != null ? '\nĐã chốt công' : ''}',
-                      ),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => open(row),
-                  ),
-                ),
+              for (final row in rows) statusCard(row),
+              for (final leave in leaves) leaveCard(leave),
               if (!widget.self)
                 OutlinedButton.icon(
                   onPressed: busy ? null : closeDay,

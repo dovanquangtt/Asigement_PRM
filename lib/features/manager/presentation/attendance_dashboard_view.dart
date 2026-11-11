@@ -200,7 +200,12 @@ class _AttendanceDashboardViewState extends State<AttendanceDashboardView> {
         card('working', 'Đang làm', s.working, Colors.blue.shade700),
         card('completed', 'Hoàn thành', s.completed, Colors.green.shade900),
         card('late', 'Đi muộn', s.late, Colors.orange.shade800),
-        card('notCheckedIn', 'Chưa vào ca', s.notCheckedIn, Colors.red.shade700),
+        card(
+          'notCheckedIn',
+          'Chưa vào ca',
+          s.notCheckedIn,
+          Colors.red.shade700,
+        ),
         card('exceptions', 'Ngoại lệ', s.exceptions, Colors.deepOrange),
       ],
     );
@@ -387,7 +392,10 @@ class _AttendanceDashboardViewState extends State<AttendanceDashboardView> {
             VerificationDot('GPS', r.gps),
             VerificationDot('Thiết bị', r.device),
             if (r.reason != null)
-              Text(r.reason!, style: const TextStyle(fontStyle: FontStyle.italic)),
+              Text(
+                r.reason!,
+                style: const TextStyle(fontStyle: FontStyle.italic),
+              ),
           ],
         ),
       ),
@@ -437,7 +445,13 @@ class _AttendanceDashboardViewState extends State<AttendanceDashboardView> {
     onRefresh: reload,
     child: ListView(
       padding: const EdgeInsets.all(12),
-      children: [filters(), const SizedBox(height: 12), summaryView(), const SizedBox(height: 12), listView()],
+      children: [
+        filters(),
+        const SizedBox(height: 12),
+        summaryView(),
+        const SizedBox(height: 12),
+        listView(),
+      ],
     ),
   );
 }

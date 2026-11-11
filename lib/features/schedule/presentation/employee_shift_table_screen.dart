@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../widgets/review_note_dialog.dart';
 
 import '../../../core/errors/api_exception.dart';
@@ -71,9 +72,8 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
     if (note == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await ManagerAttendanceRepository(
-        widget.client ?? ApiClient.instance,
-      ).reviewException(eventId, approve: approve, note: note);
+      await ManagerAttendanceRepository(widget.client ?? ApiClient.instance)
+          .reviewException(eventId, approve: approve, note: note);
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -234,16 +234,15 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
                         ),
                       ),
                     )
-                  else
-                    ...[
-for (final r in rows)
-  EmployeeShiftRowCard(
-    key: ValueKey('shift-row-${r['assignment_id']}'),
-    row: r,
-    parseTime: (v) => DateTime.parse('$v'),
-    onReview: _review,
-  ),
-],
+                  else ...[
+                    for (final r in rows)
+                      EmployeeShiftRowCard(
+                        key: ValueKey('shift-row-${r['assignment_id']}'),
+                        row: r,
+                        parseTime: (v) => DateTime.parse('$v'),
+                        onReview: _review,
+                      ),
+                  ],
                 ],
               );
             },

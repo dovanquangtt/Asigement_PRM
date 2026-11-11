@@ -92,7 +92,9 @@ class CheckInSuccessScreen extends StatelessWidget {
     return _SuccessScaffold(
       icon: pending ? Icons.hourglass_top_rounded : Icons.check_circle_rounded,
       color: color,
-      title: pending ? 'Đã gửi, chờ quản lý xác nhận' : 'Chấm công vào thành công',
+      title: pending
+          ? 'Đã gửi, chờ quản lý xác nhận'
+          : 'Chấm công vào thành công',
       subtitle: pending
           ? 'Lần chấm công vào ca được ghi nhận như một ngoại lệ. Quản lý sẽ xem xét và xác nhận.'
           : response.message,
@@ -100,7 +102,11 @@ class CheckInSuccessScreen extends StatelessWidget {
         SectionCard(
           children: [
             InfoRow('Nhân viên', response.employee.fullName),
-            InfoRow('Giờ vào (máy chủ)', fmtDateTime(response.serverTime), bold: true),
+            InfoRow(
+              'Giờ vào (máy chủ)',
+              fmtDateTime(response.serverTime),
+              bold: true,
+            ),
             InfoRow('Chi nhánh', response.branchName ?? '—'),
             InfoRow('Ca làm', fmtShift(response.shift)),
             InfoRow(
@@ -116,7 +122,12 @@ class CheckInSuccessScreen extends StatelessWidget {
         ),
       ],
       buttons: [
-        _button(context, 'Xem lịch sử chấm công', SuccessNext.history, primary: true),
+        _button(
+          context,
+          'Xem lịch sử chấm công',
+          SuccessNext.history,
+          primary: true,
+        ),
         _button(context, 'Quay lại trang chủ', SuccessNext.home),
       ],
     );
@@ -140,7 +151,9 @@ class CheckOutSuccessScreen extends StatelessWidget {
     return _SuccessScaffold(
       icon: pending ? Icons.hourglass_top_rounded : Icons.check_circle_rounded,
       color: color,
-      title: pending ? 'Đã gửi, chờ quản lý xác nhận' : 'Chấm công ra thành công',
+      title: pending
+          ? 'Đã gửi, chờ quản lý xác nhận'
+          : 'Chấm công ra thành công',
       subtitle: pending
           ? 'Lần chấm công ra ca được ghi nhận như một ngoại lệ. Quản lý sẽ xem xét và xác nhận.'
           : response.message,
@@ -180,7 +193,12 @@ class CheckOutSuccessScreen extends StatelessWidget {
         ),
       ],
       buttons: [
-        _button(context, 'Xem chi tiết chấm công', SuccessNext.detail, primary: true),
+        _button(
+          context,
+          'Xem chi tiết chấm công',
+          SuccessNext.detail,
+          primary: true,
+        ),
         _button(context, 'Xem lịch sử chấm công', SuccessNext.history),
         _button(context, 'Quay lại trang chủ', SuccessNext.home),
       ],

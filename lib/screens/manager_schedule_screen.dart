@@ -7,10 +7,7 @@ import '../widgets/common_widgets.dart';
 import 'operations_screen.dart';
 
 class ManagerScheduleScreen extends StatefulWidget {
-  const ManagerScheduleScreen({
-    super.key,
-    required this.repository,
-  });
+  const ManagerScheduleScreen({super.key, required this.repository});
 
   final WorkforceRepository repository;
 
@@ -23,7 +20,8 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
 
   late Future<List<RowData>> _loading;
   int? _selectedDayIndex; // null = tất cả
-  String _statusFilter = 'all'; // 'all', 'understaffed', 'in_progress', 'upcoming', 'completed'
+  String _statusFilter =
+      'all'; // 'all', 'understaffed', 'in_progress', 'upcoming', 'completed'
   int? _selectedBranchId; // null = tất cả chi nhánh
 
   @override
@@ -306,10 +304,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                   icon: const Icon(Icons.add_circle_outline_rounded, size: 22),
                   label: const Text(
                     'Tạo phân ca làm việc mới',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -385,13 +380,14 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         decoration: BoxDecoration(
-                          color:
-                              _selectedDayIndex == null ? green : Colors.white,
+                          color: _selectedDayIndex == null
+                              ? green
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: _selectedDayIndex == null
                                 ? green
-                                : const Color(0xFFE8EDE7),
+                                : const Color(0xFFD5E7E4),
                           ),
                           boxShadow: _selectedDayIndex == null
                               ? [
@@ -404,8 +400,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                               : null,
                         ),
                         child: InkWell(
-                          onTap: () =>
-                              setState(() => _selectedDayIndex = null),
+                          onTap: () => setState(() => _selectedDayIndex = null),
                           borderRadius: BorderRadius.circular(14),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -441,7 +436,8 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                     Builder(
                       builder: (_) {
                         final dayDate = startOfWeek.add(Duration(days: i));
-                        final isToday = dayDate.year == nowVn.year &&
+                        final isToday =
+                            dayDate.year == nowVn.year &&
                             dayDate.month == nowVn.month &&
                             dayDate.day == nowVn.day;
                         final isSelected = _selectedDayIndex == i;
@@ -459,7 +455,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                                       ? green
                                       : isToday
                                       ? green.withValues(alpha: 0.5)
-                                      : const Color(0xFFE8EDE7),
+                                      : const Color(0xFFD5E7E4),
                                   width: isToday && !isSelected ? 1.5 : 1,
                                 ),
                                 boxShadow: isSelected
@@ -477,12 +473,21 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                                     setState(() => _selectedDayIndex = i),
                                 borderRadius: BorderRadius.circular(14),
                                 child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   child: Column(
                                     children: [
                                       Text(
-                                        ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][i],
+                                        [
+                                          'T2',
+                                          'T3',
+                                          'T4',
+                                          'T5',
+                                          'T6',
+                                          'T7',
+                                          'CN',
+                                        ][i],
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
@@ -562,7 +567,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: const BoxDecoration(
-                            color: Color(0xFFF0F5EA),
+                            color: Color(0xFFF1F8F7),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -610,9 +615,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
       selected: isSelected,
       selectedColor: green,
       backgroundColor: Colors.white,
-      side: BorderSide(
-        color: isSelected ? green : const Color(0xFFE8EDE7),
-      ),
+      side: BorderSide(color: isSelected ? green : const Color(0xFFD5E7E4)),
       labelStyle: TextStyle(
         fontSize: 13,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
@@ -643,7 +646,10 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
     final isUnderstaffed = assignedCount < requiredStaff;
 
     final List<String> staffList = assignedStaffNames.isNotEmpty
-        ? assignedStaffNames.split(', ').where((s) => s.trim().isNotEmpty).toList()
+        ? assignedStaffNames
+              .split(', ')
+              .where((s) => s.trim().isNotEmpty)
+              .toList()
         : [];
 
     return Container(
@@ -653,7 +659,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
         border: Border.all(
           color: isUnderstaffed && shift['status'] != 'cancelled'
               ? Colors.amber.shade400
-              : const Color(0xFFE8EDE7),
+              : const Color(0xFFD5E7E4),
           width: isUnderstaffed && shift['status'] != 'cancelled' ? 1.5 : 1,
         ),
         boxShadow: const [
@@ -760,7 +766,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF0F5EA),
+                              color: const Color(0xFFF1F8F7),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -823,9 +829,10 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                                             vertical: 2,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFF0F5EA),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            color: const Color(0xFFF1F8F7),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                           child: Text(
                                             '👤 $name',
@@ -864,8 +871,9 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                               ),
                               style: FilledButton.styleFrom(
                                 backgroundColor: isUnderstaffed ? green : ink,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -890,10 +898,8 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                             onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute<void>(
-                                builder: (_) => ShiftPage(
-                                  repository: r,
-                                  shiftId: shiftId,
-                                ),
+                                builder: (_) =>
+                                    ShiftPage(repository: r, shiftId: shiftId),
                               ),
                             ).then((_) => _reload()),
                             style: OutlinedButton.styleFrom(
@@ -1106,7 +1112,8 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
+                onChanged: (v) =>
+                    setState(() => _searchQuery = v.trim().toLowerCase()),
               ),
               Align(
                 alignment: Alignment.centerRight,
@@ -1137,14 +1144,18 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
                     final employees = snapshot.data!;
                     final filtered = employees.where((e) {
                       if (_searchQuery.isEmpty) return true;
-                      final name = e['full_name']?.toString().toLowerCase() ?? '';
-                      final code = e['employee_code']?.toString().toLowerCase() ?? '';
-                      return name.contains(_searchQuery) || code.contains(_searchQuery);
+                      final name =
+                          e['full_name']?.toString().toLowerCase() ?? '';
+                      final code =
+                          e['employee_code']?.toString().toLowerCase() ?? '';
+                      return name.contains(_searchQuery) ||
+                          code.contains(_searchQuery);
                     }).toList();
 
                     _visibleAvailable = [
                       for (final e in filtered)
-                        if ((e['is_available'] as bool?) ?? false) e['id'] as int,
+                        if ((e['is_available'] as bool?) ?? false)
+                          e['id'] as int,
                     ];
                     if (filtered.isEmpty) {
                       return const Center(
@@ -1163,9 +1174,12 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
                         final empId = emp['id'] as int;
                         final name = emp['full_name']?.toString() ?? '';
                         final code = emp['employee_code']?.toString() ?? '';
-                        final isAvailable = (emp['is_available'] as bool?) ?? false;
-                        final conflictReason = emp['conflict_reason']?.toString();
-                        final isAssigned = (emp['is_already_assigned'] as bool?) ?? false;
+                        final isAvailable =
+                            (emp['is_available'] as bool?) ?? false;
+                        final conflictReason = emp['conflict_reason']
+                            ?.toString();
+                        final isAssigned =
+                            (emp['is_already_assigned'] as bool?) ?? false;
 
                         return Container(
                           padding: const EdgeInsets.all(12),
@@ -1178,7 +1192,7 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isAssigned
-                                  ? const Color(0xFFE8EDE7)
+                                  ? const Color(0xFFD5E7E4)
                                   : isAvailable
                                   ? green.withValues(alpha: 0.3)
                                   : Colors.red.shade200,
@@ -1187,12 +1201,16 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
                           child: Row(
                             children: [
                               CircleAvatar(
-                                backgroundColor: isAvailable ? green : Colors.grey,
+                                backgroundColor: isAvailable
+                                    ? green
+                                    : Colors.grey,
                                 foregroundColor: Colors.white,
                                 radius: 18,
                                 child: Text(
                                   name.isNotEmpty ? name[0].toUpperCase() : 'N',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -1256,7 +1274,9 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _busy || _selected.isEmpty ? null : _assignSelected,
+                  onPressed: _busy || _selected.isEmpty
+                      ? null
+                      : _assignSelected,
                   style: FilledButton.styleFrom(backgroundColor: green),
                   icon: const Icon(Icons.group_add_rounded),
                   label: Text(
@@ -1276,10 +1296,7 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
 
 /// Modal Tạo phân ca mới
 class _CreateShiftModal extends StatefulWidget {
-  const _CreateShiftModal({
-    required this.repository,
-    required this.branches,
-  });
+  const _CreateShiftModal({required this.repository, required this.branches});
 
   final WorkforceRepository repository;
   final List<RowData> branches;
@@ -1295,7 +1312,9 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
   int startHour = 8;
   int endHour = 16;
   final staffController = TextEditingController(text: '2');
-  final noteController = TextEditingController(text: 'Khu vực Tầng 1 • Phục vụ bàn');
+  final noteController = TextEditingController(
+    text: 'Khu vực Tầng 1 • Phục vụ bàn',
+  );
   bool busy = false;
   String? error;
 
@@ -1385,7 +1404,8 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
     } catch (_) {
-      if (mounted) setState(() => error = 'Không tạo được ca làm. Hãy thử lại.');
+      if (mounted)
+        setState(() => error = 'Không tạo được ca làm. Hãy thử lại.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1457,7 +1477,9 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
                     final picked = await showDatePicker(
                       context: context,
                       initialDate: selectedDate,
-                      firstDate: DateTime.now().subtract(const Duration(days: 7)),
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 7),
+                      ),
                       lastDate: DateTime.now().add(const Duration(days: 90)),
                     );
                     if (picked != null) {
@@ -1467,7 +1489,7 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F5EA),
+                      color: const Color(0xFFF1F8F7),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: green.withValues(alpha: 0.3)),
                     ),
@@ -1520,7 +1542,9 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
                   children: [
                     Expanded(
                       child: TextField(
-                        controller: TextEditingController(text: '$startHour:00'),
+                        controller: TextEditingController(
+                          text: '$startHour:00',
+                        ),
                         decoration: InputDecoration(
                           labelText: 'Giờ bắt đầu',
                           border: OutlineInputBorder(
@@ -1577,7 +1601,10 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
                   const SizedBox(height: 12),
                   Text(
                     error!,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
 
@@ -1622,9 +1649,7 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
         selected: isSelected,
         selectedColor: green,
         backgroundColor: Colors.white,
-        side: BorderSide(
-          color: isSelected ? green : const Color(0xFFE8EDE7),
-        ),
+        side: BorderSide(color: isSelected ? green : const Color(0xFFD5E7E4)),
         onSelected: (s) {
           if (s) _applyTemplate(index);
         },

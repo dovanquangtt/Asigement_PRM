@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../widgets/review_note_dialog.dart';
 
 import '../services/auth_service.dart';
@@ -221,16 +222,15 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
                               ),
                             ),
                           )
-                        else
-                          ...[
-for (final r in rows)
-  EmployeeShiftRowCard(
-    key: ValueKey('shift-row-${r['assignment_id']}'),
-    row: r,
-    parseTime: (v) => utcTime(v),
-    onReview: _review,
-  ),
-],
+                        else ...[
+                          for (final r in rows)
+                            EmployeeShiftRowCard(
+                              key: ValueKey('shift-row-${r['assignment_id']}'),
+                              row: r,
+                              parseTime: (v) => utcTime(v),
+                              onReview: _review,
+                            ),
+                        ],
                       ],
                     );
                   },

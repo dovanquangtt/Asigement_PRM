@@ -32,7 +32,8 @@ class _BackendShellState extends State<BackendShell> {
   @override
   void initState() {
     super.initState();
-    ApiClient.instance.onUnauthorized = () => _leave('Phiên đăng nhập đã hết hạn.');
+    ApiClient.instance.onUnauthorized = () =>
+        _leave('Phiên đăng nhập đã hết hạn.');
     SystemNotifier.instance.init().then((_) => _pollNotifications());
     _poller = Timer.periodic(
       const Duration(seconds: 5),

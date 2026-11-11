@@ -300,17 +300,33 @@ void main() {
         DateTime.utc(2026, 10, 31),
         1.5,
       );
-      final calculated = await employee.calculatePay(period);
-      final own = (await employee.payslips()).single;
-      expect(own['net_pay_vnd'], 570000);
-      expect(calculated['payslip_id'], own['id']);
+      await manager.calculatePay(
+        period,
+        employeeId: employee.session.profile['id'] as int,
+      );
+      await expectLater(
+        employee.calculatePay(period),
+        throwsA(isA<AuthException>()),
+      );
+      final own = (await f.db.query(
+        'v_payslip_totals',
+        where: 'employee_id=?',
+        whereArgs: [employee.session.profile['id']],
+      )).single;
+      expect(
+        await employee.payslips(),
+        isEmpty,
+        reason: 'draft payslips are hidden from employees',
+      );
+      // 570.000 tru bao hiem tu dong 8% cua luong co ban 480.000.
+      expect(own['net_pay_vnd'], 531600);
       var detail = await employee.payslipDetail(own['id'] as int);
       expect(detail['checks'], hasLength(6));
       expect(detail['checks_current'], isTrue);
       expect(detail['period_code'], 'OCT_2026');
       expect(detail['starts_on'], '2026-10-01');
       expect(detail['gross_pay_vnd'], 570000);
-      expect(detail['deductions_vnd'], 0);
+      expect(detail['deductions_vnd'], 38400);
       expect(
         (detail['checks'] as List<RowData>)
             .map((check) => check['step_number'])
@@ -334,16 +350,23 @@ void main() {
       detail = await employee.payslipDetail(own['id'] as int);
       expect(detail['checks'], isEmpty);
       expect(detail['checks_current'], isFalse);
-      expect(detail['items'], hasLength(1));
+      expect(detail['items'], hasLength(2));
       expect(detail['gross_pay_vnd'], 580000);
-      expect(detail['net_pay_vnd'], 580000);
+      expect(detail['net_pay_vnd'], 541600);
       await expectLater(
         manager.approvePayroll(period),
         throwsA(isA<AuthException>()),
       );
       await manager.calculatePay(period);
       expect(await f.db.query('payroll_calculation_steps'), hasLength(6));
-      expect((await employee.payslips()).single['net_pay_vnd'], 580000);
+      expect(
+        (await f.db.query(
+          'v_payslip_totals',
+          where: 'employee_id=?',
+          whereArgs: [employee.session.profile['id']],
+        )).single['net_pay_vnd'],
+        541600,
+      );
       final otherPayslips = await f.db.query(
         'payslips',
         where: 'period_id=? AND employee_id<>?',
@@ -424,17 +447,6 @@ void main() {
     );
     expect(await f.db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
   });
-  test('M06 stars are read-only: employee sees only their own, awarding was removed', () async {
-    await f.db.insert('star_events', {
-      'employee_id': employee.session.profile['id'] as int,
-      'stars_delta': 2,
-      'reason': 'Làm tốt',
-      'awarded_by': manager.session.userId,
-    });
-    expect((await employee.stars()).single['total_stars'], 2);
-    expect(await manager.stars(), isNotEmpty);
-    expect(await employee.stars(), hasLength(1));
-  });
   test('M07 explains why closing is blocked while check-out is pending or rejected', () async {
     final a = await assigned();
     final file = File('${f.directory.path}/photo2.jpg');
@@ -471,10 +483,7 @@ void main() {
       false,
       note: 'Sai Wi-Fi',
     );
-    expect(
-      await employee.closureBlockedReason(a),
-      contains('đã bị từ chối'),
-    );
+    expect(await employee.closureBlockedReason(a), contains('đã bị từ chối'));
     await employee.recordAttendance(a, 'check_out', evidence(end), now: end);
     expect(await employee.closureBlockedReason(a), isNull);
     await employee.closeAssignment(a, 'Bàn giao hoàn tất', file.path);
@@ -507,7 +516,7 @@ void main() {
       employee.reviewClosure(closure['id'] as int, true),
       throwsA(isA<AuthException>()),
     );
-    await manager.reviewClosure(closure['id'] as int, false);
+    await manager.reviewClosure(closure['id'] as int, false, note: 'Thiếu ảnh');
     await employee.closeAssignment(a, 'Đã bổ sung ghi chú', file.path);
     expect(await f.db.query('shift_closures'), hasLength(1));
     await manager.reviewClosure(closure['id'] as int, true);

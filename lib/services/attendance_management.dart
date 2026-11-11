@@ -139,9 +139,13 @@ extension AttendanceManagement on WorkforceRepository {
     );
   }
 
+  /// Tình trạng điểm danh trong một ngày: mỗi ca của nhân viên (kèm lượt điểm danh đang chờ duyệt,
+  /// trạng thái công) và những người nghỉ phép đã duyệt trong ngày đó.
+  /// [now] chỉ để kiểm thử; mặc định là giờ hiện tại.
   Future<RowData> attendanceManagement({
     DateTime? day,
     bool self = false,
+    DateTime? now,
   }) async {
     final db = await _open();
     final date = day ?? DateTime.now();
@@ -163,20 +167,22 @@ extension AttendanceManagement on WorkforceRepository {
     ];
     final args = <Object?>[dateText, ?scope, ?employeeId];
     final rows = await db.rawQuery(
-      "SELECT a.id assignment_id,e.id employee_id,e.user_id,e.full_name,e.employee_code,s.id shift_id,s.branch_id,b.name branch_name,s.starts_at,s.ends_at,s.status shift_status,r.id attendance_id,r.check_in_at,r.check_out_at,r.late_minutes,r.worked_minutes,r.overtime_minutes,r.overtime_requested_minutes,r.overtime_status,r.arrival_status,r.locked_at,q.id adjustment_id,(SELECT COUNT(*) FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.result='pending_review') pending_exceptions FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id JOIN branches b ON b.id=s.branch_id LEFT JOIN attendance_records r ON r.assignment_id=a.id LEFT JOIN attendance_adjustment_requests q ON q.attendance_id=r.id AND q.status='pending' WHERE ${where.join(' AND ')} ORDER BY s.starts_at,e.full_name",
+      "SELECT a.id assignment_id,e.id employee_id,e.user_id,e.full_name,e.employee_code,s.id shift_id,s.branch_id,b.name branch_name,s.starts_at,s.ends_at,s.status shift_status,r.id attendance_id,r.check_in_at,r.check_out_at,r.late_minutes,r.worked_minutes,r.overtime_minutes,r.overtime_requested_minutes,r.overtime_status,r.arrival_status,r.attendance_state,r.locked_at,q.id adjustment_id,(SELECT COUNT(*) FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.result='pending_review') pending_exceptions FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN employees e ON e.id=a.employee_id JOIN branches b ON b.id=s.branch_id LEFT JOIN attendance_records r ON r.assignment_id=a.id LEFT JOIN attendance_adjustment_requests q ON q.attendance_id=r.id AND q.status='pending' WHERE ${where.join(' AND ')} ORDER BY s.starts_at,e.full_name",
       args,
     );
-    final now = DateTime.now().toUtc();
+    final clock = (now ?? DateTime.now()).toUtc();
     final entries = rows
         .map(
           (r) => <String, Object?>{
             ...r,
+            // Cùng tên khóa với lịch của nhân viên để dùng chung `shiftPhase`.
+            'pending_events': r['pending_exceptions'],
             'work_state': r['check_in_at'] == null
-                ? (now.isAfter(utcTime(r['ends_at']))
+                ? (clock.isAfter(utcTime(r['ends_at']))
                       ? 'MISSING_CHECK_IN'
                       : 'NOT_STARTED')
                 : r['check_out_at'] == null
-                ? (now.isAfter(utcTime(r['ends_at']))
+                ? (clock.isAfter(utcTime(r['ends_at']))
                       ? 'MISSING_CHECK_OUT'
                       : 'IN_PROGRESS')
                 : 'COMPLETED',
@@ -190,9 +196,19 @@ extension AttendanceManagement on WorkforceRepository {
       "SELECT COUNT(*) n FROM employees WHERE status='active' ${scope == null ? '' : 'AND branch_id=?'} ${employeeId == null ? '' : 'AND id=?'}",
       [?scope, ?employeeId],
     )).single['n'];
+    // Người nghỉ phép đã duyệt trong ngày (đợt nghỉ kết thúc đúng 00:00 không tính ngày kế tiếp).
+    final leaves = await db.rawQuery(
+      "SELECT l.id leave_id,l.starts_at,l.ends_at,l.reason,t.name leave_type_name,e.id employee_id,e.full_name,e.employee_code,b.name branch_name "
+      "FROM leave_requests l JOIN leave_types t ON t.id=l.leave_type_id JOIN employees e ON e.id=l.employee_id JOIN branches b ON b.id=e.branch_id "
+      "WHERE l.status='approved' AND e.status='active' AND date(l.starts_at,'localtime')<=? AND datetime(l.ends_at,'localtime')>? "
+      "${scope == null ? '' : 'AND e.branch_id=? '}${employeeId == null ? '' : 'AND e.id=? '}ORDER BY e.full_name",
+      [dateText, '$dateText 00:00:00', ?scope, ?employeeId],
+    );
     return {
       'date': dateText,
       'employees': employeeCount,
+      'leaves': leaves,
+      'on_leave': leaves.map((r) => r['employee_id']).toSet().length,
       'checked_in': entries
           .where((r) => r['check_in_at'] != null)
           .map((r) => r['employee_id'])

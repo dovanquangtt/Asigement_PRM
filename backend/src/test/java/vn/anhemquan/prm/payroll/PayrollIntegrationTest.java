@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Payroll, stars, closures and account linking against PostgreSQL. */
+/** Payroll, closures and account linking. */
 class PayrollIntegrationTest extends AbstractIntegrationTest {
 
     private static final String PASSWORD = "Passw0rd!x";
@@ -297,24 +297,6 @@ class PayrollIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM contracts WHERE contract_number = ?",
                 Integer.class, "K" + sfx));
-    }
-
-    @Test
-    void starsAreReadOnlyAndEmployeesSeeOnlyTheirOwn() throws Exception {
-        long managerUser = createUser("mgr" + sfx, PASSWORD, "manager", null);
-        long managerEmp = employee(managerUser, "M" + sfx, "Quan Ly");
-        // Awarding stars was removed from the API: existing events are only listed.
-        jdbc.update("INSERT INTO star_events (employee_id, stars_delta, reason, awarded_by) VALUES (?, 3, 'Tot', ?)",
-                empId, managerUser);
-        String managerToken = login("mgr" + sfx, PASSWORD);
-
-        call(post("/api/stars"), managerToken, Map.of("employeeId", empId, "delta", 1, "reason", "x"))
-                .andExpect(status().is4xxClientError());
-        call(get("/api/stars"), empToken, null)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].total_stars").value(3));
-        jdbc.update("UPDATE employees SET status = 'inactive' WHERE id = ?", managerEmp);
     }
 
     @Test

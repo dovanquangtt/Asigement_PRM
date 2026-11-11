@@ -295,7 +295,11 @@ void main() {
             (r) => r['status'] == 'submitted',
           );
           final id = row['id'] as int;
-          await admin.reviewClosure(id, accept);
+          await admin.reviewClosure(
+            id,
+            accept,
+            note: accept ? null : 'Chưa đạt',
+          );
           expect(
             (await employee.closures()).singleWhere(
               (r) => r['id'] == id,

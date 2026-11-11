@@ -52,15 +52,15 @@ Widget metric(String title, String value, String unit, IconData icon) => panel(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: icon == Icons.star_outline_rounded
-                  ? const Color(0xFFFFF3D8)
-                  : const Color(0xFFEAF2E4),
+                  ? const Color(0xFFE0F2EF)
+                  : const Color(0xFFE0F2EF),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
               size: 20,
               color: icon == Icons.star_outline_rounded
-                  ? const Color(0xFFB58A34)
+                  ? const Color(0xFF0F766E)
                   : green,
             ),
           ),
@@ -108,7 +108,7 @@ Widget quick(IconData icon, String text, VoidCallback action) => Material(
           Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: const Color(0xFFF0F5EA),
+              color: const Color(0xFFF1F8F7),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: green, size: 20),
@@ -158,14 +158,14 @@ Widget panel({required Widget child}) => Material(
   color: Colors.white,
   shape: RoundedRectangleBorder(
     borderRadius: BorderRadius.circular(20),
-    side: const BorderSide(color: Color(0xFFE8EDE7)),
+    side: const BorderSide(color: Color(0xFFD5E7E4)),
   ),
   child: Padding(padding: const EdgeInsets.all(18), child: child),
 );
 Widget pill(String text, {bool dark = false}) => Container(
   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
   decoration: BoxDecoration(
-    color: dark ? Colors.white.withValues(alpha: .12) : const Color(0xFFE8F2E9),
+    color: dark ? Colors.white.withValues(alpha: .12) : const Color(0xFFE0F2EF),
     borderRadius: BorderRadius.circular(30),
   ),
   child: Text(

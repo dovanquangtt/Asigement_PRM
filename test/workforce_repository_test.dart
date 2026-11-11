@@ -29,6 +29,7 @@ void main() {
         username: 'new_staff',
         password: 'NewStaff123!',
         role: 'employee',
+        fullName: 'Nhân viên mới',
       );
       expect(
         (await fixture.auth.signIn('new_staff', 'NewStaff123!')).role,
@@ -119,6 +120,9 @@ void main() {
         'employee_id': id,
         'contract_id': contract,
         'base_pay_vnd': 10000000,
+        'status': 'approved',
+        'approved_by': manager.session.userId,
+        'approved_at': '2026-10-31 00:00:00',
       });
     }
     final ownShifts = await employee.shifts();
@@ -143,62 +147,68 @@ void main() {
     await expectLater(admin.profile(), throwsA(isA<AuthException>()));
   });
 
-  test('Employee schedule view, leave requests and leave types work correctly', () async {
-    final employee = await repository('employee', 'Employee@12345');
-    final manager = await repository('manager', 'Manager@12345');
-    final branch = (await fixture.db.query('branches')).first['id'];
+  test(
+    'Employee schedule view, leave requests and leave types work correctly',
+    () async {
+      final employee = await repository('employee', 'Employee@12345');
+      final manager = await repository('manager', 'Manager@12345');
+      final branch = (await fixture.db.query('branches')).first['id'];
 
-    final shiftId = await manager.createShift(
-      branchId: branch as int,
-      start: DateTime.parse('2026-11-01T08:00:00Z'),
-      end: DateTime.parse('2026-11-01T16:00:00Z'),
-      requiredStaff: 2,
-      note: 'Ca sáng phục vụ',
-    );
+      final shiftId = await manager.createShift(
+        branchId: branch as int,
+        start: DateTime.parse('2026-11-01T08:00:00Z'),
+        end: DateTime.parse('2026-11-01T16:00:00Z'),
+        requiredStaff: 2,
+        note: 'Ca sáng phục vụ',
+      );
 
-    final empId = employee.session.profile['id'] as int;
-    final mgrEmpId = manager.session.profile['id'] as int;
+      final empId = employee.session.profile['id'] as int;
+      final mgrEmpId = manager.session.profile['id'] as int;
 
-    await manager.assignShift(shiftId, empId);
-    await manager.assignShift(shiftId, mgrEmpId);
+      await manager.assignShift(shiftId, empId);
+      await manager.assignShift(shiftId, mgrEmpId);
 
-    // Test employeeSchedule
-    final schedule = await employee.employeeSchedule();
-    expect(schedule, hasLength(1));
-    expect(schedule.single['shift_id'], shiftId);
-    expect(schedule.single['shift_note'], 'Ca sáng phục vụ');
-    expect(schedule.single['total_assigned'], 2);
-    expect(schedule.single['coworkers'], contains(manager.session.profile['full_name']));
+      // Test employeeSchedule
+      final schedule = await employee.employeeSchedule();
+      expect(schedule, hasLength(1));
+      expect(schedule.single['shift_id'], shiftId);
+      expect(schedule.single['shift_note'], 'Ca sáng phục vụ');
+      expect(schedule.single['total_assigned'], 2);
+      expect(
+        schedule.single['coworkers'],
+        contains(manager.session.profile['full_name']),
+      );
 
-    // Test leaveTypes
-    final types = await employee.leaveTypes();
-    expect(types, isNotEmpty);
-    final leaveTypeId = types.first['id'] as int;
+      // Test leaveTypes
+      final types = await employee.leaveTypes();
+      expect(types, isNotEmpty);
+      final leaveTypeId = types.first['id'] as int;
 
-    // Test createLeaveRequest and employeeLeaveRequests
-    final start = DateTime.now().toUtc().add(const Duration(days: 1));
-    final end = start.add(const Duration(hours: 8));
-    await employee.createLeaveRequest(
-      leaveTypeId: leaveTypeId,
-      start: start,
-      end: end,
-      reason: 'Nghỉ cá nhân',
-    );
-
-    final requests = await employee.employeeLeaveRequests();
-    expect(requests, hasLength(1));
-    expect(requests.single['reason'], 'Nghỉ cá nhân');
-    expect(requests.single['status'], 'pending');
-
-    // Test invalid leave request dates
-    await expectLater(
-      employee.createLeaveRequest(
+      // Test createLeaveRequest and employeeLeaveRequests
+      final start = DateTime.now().toUtc().add(const Duration(days: 1));
+      final end = start.add(const Duration(hours: 8));
+      await employee.createLeaveRequest(
         leaveTypeId: leaveTypeId,
-        start: end,
-        end: start,
-        reason: 'Lỗi ngày',
-      ),
-      throwsA(isA<AuthException>()),
-    );
-  });
+        start: start,
+        end: end,
+        reason: 'Nghỉ cá nhân',
+      );
+
+      final requests = await employee.employeeLeaveRequests();
+      expect(requests, hasLength(1));
+      expect(requests.single['reason'], 'Nghỉ cá nhân');
+      expect(requests.single['status'], 'pending');
+
+      // Test invalid leave request dates
+      await expectLater(
+        employee.createLeaveRequest(
+          leaveTypeId: leaveTypeId,
+          start: end,
+          end: start,
+          reason: 'Lỗi ngày',
+        ),
+        throwsA(isA<AuthException>()),
+      );
+    },
+  );
 }

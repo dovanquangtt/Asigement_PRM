@@ -173,7 +173,10 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
           title: const Text('Cần quyền vị trí'),
           content: Text(e.message),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Đóng')),
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Đóng'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(c, true),
               child: const Text('Mở cài đặt'),
@@ -196,7 +199,10 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
           title: const Text('Thiết bị chưa đăng ký'),
           content: Text(attendanceErrorMessage(e)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Để sau')),
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Để sau'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(c, true),
               child: const Text('Đăng ký thiết bị'),
@@ -221,7 +227,9 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
         deviceIdentifier: device.id,
         platform: device.platform,
       );
-      _snack('Đã gửi đăng ký thiết bị. Quản lý cần duyệt thiết bị trước khi bạn chấm công.');
+      _snack(
+        'Đã gửi đăng ký thiết bị. Quản lý cần duyệt thiết bị trước khi bạn chấm công.',
+      );
     } on ApiException catch (e) {
       _snack(attendanceErrorMessage(e));
     }
@@ -243,7 +251,11 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
             backgroundColor: const Color(0xFFE0EBD4),
             child: Text(
               e.initials,
-              style: const TextStyle(color: green, fontWeight: FontWeight.w800, fontSize: 18),
+              style: const TextStyle(
+                color: green,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -253,9 +265,15 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
               children: [
                 Text(
                   e.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
                 ),
-                Text('Mã NV: ${e.employeeCode}', style: const TextStyle(color: muted)),
+                Text(
+                  'Mã NV: ${e.employeeCode}',
+                  style: const TextStyle(color: muted),
+                ),
                 if (e.position != null) Text(e.position!),
                 Text(e.branchName ?? '—', style: const TextStyle(color: muted)),
               ],
@@ -267,17 +285,18 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
   );
 
   Widget _actionCard(TodayResponse d) {
-    final showIn = d.canCheckIn &&
+    final showIn =
+        d.canCheckIn &&
         (d.state == AttendanceState.notCheckedIn ||
             d.state == AttendanceState.exception);
-    final showOut = d.canCheckOut &&
+    final showOut =
+        d.canCheckOut &&
         (d.state == AttendanceState.working ||
             d.state == AttendanceState.exception);
     final inAt = d.attendance?.checkInAt;
-    final elapsed =
-        d.state == AttendanceState.working && inAt != null
-            ? _now().difference(inAt)
-            : null;
+    final elapsed = d.state == AttendanceState.working && inAt != null
+        ? _now().difference(inAt)
+        : null;
     return SectionCard(
       title: 'Trạng thái',
       children: [
@@ -289,14 +308,19 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
               Text(
                 fmtElapsed(elapsed),
                 key: const Key('elapsed'),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                ),
               ),
           ],
         ),
         if (d.state == AttendanceState.noShift)
           const Padding(
             padding: EdgeInsets.only(top: 10),
-            child: Text('Bạn chưa được phân ca hôm nay. Hãy liên hệ quản lý nếu có nhầm lẫn.'),
+            child: Text(
+              'Bạn chưa được phân ca hôm nay. Hãy liên hệ quản lý nếu có nhầm lẫn.',
+            ),
           ),
         if (d.state == AttendanceState.completed)
           Padding(
@@ -316,12 +340,14 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange.shade800),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: Colors.orange.shade800,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    '${eventTypeLabel(x.eventType)}: ${x.message}',
-                  ),
+                  child: Text('${eventTypeLabel(x.eventType)}: ${x.message}'),
                 ),
               ],
             ),
@@ -362,7 +388,10 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
           ? const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             )
           : Icon(icon),
       label: Text(busy ? 'Đang xử lý…' : label),
@@ -414,7 +443,10 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
                   SectionCard(
                     title: 'Ca làm hôm nay',
                     children: [
-                      InfoRow('Ngày', d.date.isEmpty ? fmtDate(d.serverTime) : d.date),
+                      InfoRow(
+                        'Ngày',
+                        d.date.isEmpty ? fmtDate(d.serverTime) : d.date,
+                      ),
                       InfoRow('Ca', fmtShift(d.shift)),
                       if (d.shift?.branchName != null)
                         InfoRow('Chi nhánh', d.shift!.branchName!),
@@ -422,7 +454,9 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
                         InfoRow(
                           'Các ca khác',
                           d.shifts
-                              .where((s) => s.assignmentId != d.shift?.assignmentId)
+                              .where(
+                                (s) => s.assignmentId != d.shift?.assignmentId,
+                              )
                               .map(fmtShift)
                               .join(', '),
                         ),
@@ -433,10 +467,19 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
                     SectionCard(
                       title: 'Giờ chấm công',
                       children: [
-                        InfoRow('Giờ vào', fmtDateTime(d.attendance!.checkInAt)),
-                        InfoRow('Giờ ra', fmtDateTime(d.attendance!.checkOutAt)),
+                        InfoRow(
+                          'Giờ vào',
+                          fmtDateTime(d.attendance!.checkInAt),
+                        ),
+                        InfoRow(
+                          'Giờ ra',
+                          fmtDateTime(d.attendance!.checkOutAt),
+                        ),
                         if (d.attendance!.lateMinutes > 0)
-                          InfoRow('Đi muộn', '${d.attendance!.lateMinutes} phút'),
+                          InfoRow(
+                            'Đi muộn',
+                            '${d.attendance!.lateMinutes} phút',
+                          ),
                       ],
                     ),
                   SectionCard(
@@ -447,7 +490,9 @@ class _AttendanceHomeScreenState extends State<AttendanceHomeScreen> {
                     onPressed: _openHistory,
                     icon: const Icon(Icons.history),
                     label: const Text('Xem lịch sử chấm công'),
-                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 52)),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 52),
+                    ),
                   ),
                 ],
               ),

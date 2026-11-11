@@ -33,10 +33,8 @@ void main() {
 
   test('missing optional parts stay null instead of being invented', () async {
     final api = FakeApi({
-      'GET /api/attendance/me/today': (_) => (
-        200,
-        todayJson(state: 'NO_SHIFT', shift: false),
-      ),
+      'GET /api/attendance/me/today': (_) =>
+          (200, todayJson(state: 'NO_SHIFT', shift: false)),
     });
     final today = await AttendanceRepository(api.client()).today();
     expect(today.state, AttendanceState.noShift);
@@ -63,8 +61,7 @@ void main() {
         wifiBssid: 'aa:bb',
       ),
     );
-    final body =
-        jsonDecode(api.calls.single.body) as Map<String, dynamic>;
+    final body = jsonDecode(api.calls.single.body) as Map<String, dynamic>;
     expect(body['assignmentId'], 55);
     expect(body['deviceIdentifier'], 'dev-1');
     expect(body['devicePlatform'], 'android');
@@ -72,7 +69,10 @@ void main() {
     expect(body['accuracyMeters'], 9);
     expect(body['locationCollectedAt'], '2026-10-29T01:00:00.000Z');
     expect(body['mockLocation'], false);
-    expect(api.calls.single.headers['Content-Type'], contains('application/json'));
+    expect(
+      api.calls.single.headers['Content-Type'],
+      contains('application/json'),
+    );
     expect(response.isCheckIn, isTrue);
     expect(response.pendingReview, isFalse);
     expect(response.serverTime, DateTime.utc(2026, 10, 29, 1, 2, 3));
@@ -106,11 +106,9 @@ void main() {
         },
       ),
     });
-    final page = await AttendanceRepository(api.client()).history(
-      from: DateTime(2026, 10, 1),
-      to: DateTime(2026, 10, 31),
-      page: 1,
-    );
+    final page = await AttendanceRepository(
+      api.client(),
+    ).history(from: DateTime(2026, 10, 1), to: DateTime(2026, 10, 31), page: 1);
     final q = api.calls.single.url.queryParameters;
     expect(q['from'], '2026-10-01');
     expect(q['to'], '2026-10-31');
@@ -127,7 +125,11 @@ void main() {
       'GET /api/attendance/me/55': (_) => (
         200,
         {
-          'item': {'attendanceId': 55, 'date': '2026-10-29', 'status': 'SUCCESS'},
+          'item': {
+            'attendanceId': 55,
+            'date': '2026-10-29',
+            'status': 'SUCCESS',
+          },
           'verification': verificationJson(),
           'events': [
             {
@@ -152,7 +154,9 @@ void main() {
 
   group('error mapping', () {
     Future<ApiException> failure(int status, Object? body) async {
-      final api = FakeApi({'GET /api/attendance/me/today': (_) => (status, body)});
+      final api = FakeApi({
+        'GET /api/attendance/me/today': (_) => (status, body),
+      });
       try {
         await AttendanceRepository(api.client()).today();
       } on ApiException catch (e) {
@@ -169,7 +173,8 @@ void main() {
     });
 
     test('known codes become Vietnamese messages', () {
-      String m(String code) => attendanceErrorMessage(ApiException('x', code: code, status: 400));
+      String m(String code) =>
+          attendanceErrorMessage(ApiException('x', code: code, status: 400));
       expect(m('DEVICE_NOT_REGISTERED'), contains('chưa được đăng ký'));
       expect(m('DEVICE_REVOKED'), contains('thu hồi'));
       expect(m('NO_SHIFT'), contains('chưa được phân ca'));
@@ -192,7 +197,8 @@ void main() {
 
   test('registerDevice posts to /api/devices', () async {
     final api = FakeApi({'POST /api/devices': (_) => (201, null)});
-    await AttendanceRepository(api.client()).registerDevice(deviceIdentifier: 'abc');
+    await AttendanceRepository(api.client())
+        .registerDevice(deviceIdentifier: 'abc');
     expect(jsonDecode(api.calls.single.body), {
       'deviceIdentifier': 'abc',
       'platform': 'android',

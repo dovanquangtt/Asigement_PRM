@@ -19,7 +19,9 @@ Color sheetStatusColor(String status) => switch (status) {
   'SUCCESS' => Colors.green.shade700,
   'PENDING_REVIEW' => Colors.orange.shade800,
   'IN_PROGRESS' => Colors.blue.shade700,
-  'REJECTED' || 'MISSING_CHECK_IN' || 'MISSING_CHECK_OUT' => Colors.red.shade700,
+  'REJECTED' ||
+  'MISSING_CHECK_IN' ||
+  'MISSING_CHECK_OUT' => Colors.red.shade700,
   _ => Colors.grey.shade700,
 };
 
@@ -101,9 +103,9 @@ class _AttendanceSheetScreenState extends State<AttendanceSheetScreen> {
     _refresh();
   }
 
-  void _snack(String message) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
+  void _snack(String message) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
 
   Future<void> _run(Future<void> Function() action, String done) async {
     if (busy) return;
@@ -231,7 +233,9 @@ class _AttendanceSheetScreenState extends State<AttendanceSheetScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(reviewer ? 'Bảng điểm danh nhân viên' : 'Bảng điểm danh của tôi'),
+      title: Text(
+        reviewer ? 'Bảng điểm danh nhân viên' : 'Bảng điểm danh của tôi',
+      ),
       actions: [
         IconButton(
           tooltip: 'Tải lại',
@@ -282,7 +286,9 @@ class _AttendanceSheetScreenState extends State<AttendanceSheetScreen> {
                       for (final e in employees)
                         DropdownMenuItem(
                           value: e['id'] as int,
-                          child: Text('${e['full_name']} (${e['employee_code']})'),
+                          child: Text(
+                            '${e['full_name']} (${e['employee_code']})',
+                          ),
                         ),
                     ],
                     onChanged: busy
@@ -323,11 +329,31 @@ class _AttendanceSheetScreenState extends State<AttendanceSheetScreen> {
                           Wrap(
                             spacing: 8,
                             children: [
-                              _chip('Thành công', sum['success'], Colors.green.shade700),
-                              _chip('Chờ duyệt', sum['pending_review'], Colors.orange.shade800),
-                              _chip('Bị từ chối', sum['rejected'], Colors.red.shade700),
-                              _chip('Thiếu công', sum['missing'], Colors.red.shade400),
-                              _chip('Đã hủy', sum['voided'], Colors.grey.shade700),
+                              _chip(
+                                'Thành công',
+                                sum['success'],
+                                Colors.green.shade700,
+                              ),
+                              _chip(
+                                'Chờ duyệt',
+                                sum['pending_review'],
+                                Colors.orange.shade800,
+                              ),
+                              _chip(
+                                'Bị từ chối',
+                                sum['rejected'],
+                                Colors.red.shade700,
+                              ),
+                              _chip(
+                                'Thiếu công',
+                                sum['missing'],
+                                Colors.red.shade400,
+                              ),
+                              _chip(
+                                'Đã hủy',
+                                sum['voided'],
+                                Colors.grey.shade700,
+                              ),
                             ],
                           ),
                           Padding(
@@ -369,9 +395,15 @@ class _AttendanceSheetScreenState extends State<AttendanceSheetScreen> {
                                             '${_clock(r['starts_at'])}-${_clock(r['ends_at'])}',
                                           ),
                                         ),
-                                        DataCell(Text(_clock(r['check_in_at']))),
-                                        DataCell(Text(_clock(r['check_out_at']))),
-                                        DataCell(Text(_hours(r['worked_minutes']))),
+                                        DataCell(
+                                          Text(_clock(r['check_in_at'])),
+                                        ),
+                                        DataCell(
+                                          Text(_clock(r['check_out_at'])),
+                                        ),
+                                        DataCell(
+                                          Text(_hours(r['worked_minutes'])),
+                                        ),
                                         DataCell(
                                           Tooltip(
                                             message:
@@ -486,7 +518,13 @@ class _EditDialogState extends State<_EditDialog> {
       initialTime: TimeOfDay.fromDateTime(old),
     );
     if (time == null || !mounted) return;
-    final value = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final value = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
     setState(() => incoming ? checkIn = value : checkOut = value);
   }
 
@@ -523,7 +561,10 @@ class _EditDialogState extends State<_EditDialog> {
       ),
     ),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Hủy'),
+      ),
       FilledButton(
         onPressed: () {
           if (reason.text.trim().isEmpty) {
@@ -533,7 +574,11 @@ class _EditDialogState extends State<_EditDialog> {
           } else {
             Navigator.pop(
               context,
-              _EditResult(checkIn.toUtc(), checkOut.toUtc(), reason.text.trim()),
+              _EditResult(
+                checkIn.toUtc(),
+                checkOut.toUtc(),
+                reason.text.trim(),
+              ),
             );
           }
         },

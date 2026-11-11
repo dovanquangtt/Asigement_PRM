@@ -22,7 +22,9 @@ class Recorder {
   Recorder(this.handler) {
     client = ApiClient(
       client: MockClient((r) async {
-        calls.add('${r.method} ${r.url.path}${r.url.hasQuery ? '?${r.url.query}' : ''}');
+        calls.add(
+          '${r.method} ${r.url.path}${r.url.hasQuery ? '?${r.url.query}' : ''}',
+        );
         bodies.add(r.body);
         return handler(r);
       }),
@@ -48,9 +50,13 @@ void main() {
   test('Repository builds the schedule requests and parses ids', () async {
     final r = Recorder((req) async {
       final p = req.url.path;
-      if (p.endsWith('/branches')) return json([{'id': 1, 'name': 'A'}]);
+      if (p.endsWith('/branches'))
+        return json([
+          {'id': 1, 'name': 'A'},
+        ]);
       if (p.endsWith('/shifts/overview')) return json([]);
-      if (req.method == 'POST' && p.endsWith('/shifts')) return json({'id': 42}, 201);
+      if (req.method == 'POST' && p.endsWith('/shifts'))
+        return json({'id': 42}, 201);
       if (p.endsWith('/eligible-employees')) return json([]);
       return http.Response('', 204);
     });
@@ -87,14 +93,23 @@ void main() {
   });
 
   test('Repository surfaces backend errors', () async {
-    final r = Recorder((_) async => json({'code': 'FORBIDDEN', 'message': 'Không có quyền'}, 403));
+    final r = Recorder(
+      (_) async =>
+          json({'code': 'FORBIDDEN', 'message': 'Không có quyền'}, 403),
+    );
     await expectLater(
       ScheduleRepository(r.client).assign(1, 2),
       throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)),
     );
   });
 
-  Map<String, dynamic> employee(int id, String name, {bool ok = true, bool assigned = false, String? why}) => {
+  Map<String, dynamic> employee(
+    int id,
+    String name, {
+    bool ok = true,
+    bool assigned = false,
+    String? why,
+  }) => {
     'id': id,
     'full_name': name,
     'employee_code': 'E$id',
@@ -103,16 +118,27 @@ void main() {
     'conflict_reason': why,
   };
 
-  testWidgets('Create shift then assign staff, showing conflicts', (tester) async {
+  testWidgets('Create shift then assign staff, showing conflicts', (
+    tester,
+  ) async {
     final assigned = <int>{};
     final r = Recorder((req) async {
       final p = req.url.path;
-      if (p.endsWith('/branches')) return json([{'id': 1, 'name': 'Chi nhánh 1'}]);
+      if (p.endsWith('/branches'))
+        return json([
+          {'id': 1, 'name': 'Chi nhánh 1'},
+        ]);
       if (p.endsWith('/shifts/overview')) return json([]);
-      if (req.method == 'POST' && p.endsWith('/shifts')) return json({'id': 7}, 201);
+      if (req.method == 'POST' && p.endsWith('/shifts'))
+        return json({'id': 7}, 201);
       if (p.endsWith('/shifts/7/eligible-employees')) {
         return json([
-          employee(1, 'An', assigned: assigned.contains(1), ok: !assigned.contains(1)),
+          employee(
+            1,
+            'An',
+            assigned: assigned.contains(1),
+            ok: !assigned.contains(1),
+          ),
           employee(2, 'Bình', ok: false, why: 'Nhân viên bị trùng giờ ca.'),
         ]);
       }
@@ -122,7 +148,9 @@ void main() {
       }
       return http.Response('', 404);
     });
-    await tester.pumpWidget(MaterialApp(home: ScheduleManagementScreen(client: r.client)));
+    await tester.pumpWidget(
+      MaterialApp(home: ScheduleManagementScreen(client: r.client)),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('Chưa có ca nào'), findsOneWidget);
 
@@ -137,7 +165,9 @@ void main() {
     await tester.enterText(find.byKey(const Key('required-staff')), '2');
     await tester.tap(find.byKey(const Key('submit-shift')));
     await tester.pumpAndSettle();
-    final body = jsonDecode(r.bodies[r.calls.indexOf('POST /api/schedule/shifts')]) as Map<String, dynamic>;
+    final body = jsonDecode(
+      r.bodies[r.calls.indexOf('POST /api/schedule/shifts')],
+    ) as Map<String, dynamic>;
     expect(body['branchId'], 1);
     expect(body['requiredStaff'], 2);
     // 08:00 and 16:00 Vietnam time are 01:00 and 09:00 UTC.
@@ -159,19 +189,34 @@ void main() {
     expect(find.text('Đã phân vào ca này'), findsOneWidget);
   });
 
-  testWidgets('Empty branch shows an explicit message; errors are retryable', (tester) async {
+  testWidgets('Empty branch shows an explicit message; errors are retryable', (
+    tester,
+  ) async {
     var fail = true;
     final r = Recorder((req) async {
       final p = req.url.path;
-      if (p.endsWith('/branches')) return json([{'id': 1, 'name': 'A'}]);
+      if (p.endsWith('/branches'))
+        return json([
+          {'id': 1, 'name': 'A'},
+        ]);
       if (p.endsWith('/shifts/overview')) {
         final now = DateTime.now().toUtc();
         return json([
           {
             'id': 7,
             'branch_name': 'A',
-            'starts_at': DateTime.utc(now.year, now.month, now.day, 1).toIso8601String(),
-            'ends_at': DateTime.utc(now.year, now.month, now.day, 9).toIso8601String(),
+            'starts_at': DateTime.utc(
+              now.year,
+              now.month,
+              now.day,
+              1,
+            ).toIso8601String(),
+            'ends_at': DateTime.utc(
+              now.year,
+              now.month,
+              now.day,
+              9,
+            ).toIso8601String(),
             'required_staff': 1,
             'assigned_count': 0,
             'assigned_staff_names': '',
@@ -185,7 +230,9 @@ void main() {
       }
       return http.Response('', 404);
     });
-    await tester.pumpWidget(MaterialApp(home: ScheduleManagementScreen(client: r.client)));
+    await tester.pumpWidget(
+      MaterialApp(home: ScheduleManagementScreen(client: r.client)),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Tạo ca'), findsOneWidget);
     await tester.tap(find.byKey(const Key('shift-7')));
@@ -194,7 +241,10 @@ void main() {
     fail = false;
     await tester.tap(find.text('Không có quyền phân ca.'));
     await tester.pumpAndSettle();
-    expect(find.text('Chi nhánh này chưa có nhân viên đang làm việc.'), findsOneWidget);
+    expect(
+      find.text('Chi nhánh này chưa có nhân viên đang làm việc.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Shell tabs follow permissions', (tester) async {
@@ -207,7 +257,13 @@ void main() {
     expect(find.text('Lịch ca'), findsOneWidget);
     expect(find.text('Phân ca'), findsNothing);
 
-    await open(session({'attendance.review', 'shifts.manage', 'profile.self'}, 'Quản lý'));
+    await open(
+      session({
+        'attendance.review',
+        'shifts.manage',
+        'profile.self',
+      }, 'Quản lý'),
+    );
     expect(find.text('Phân ca'), findsOneWidget);
     expect(find.text('Lịch ca'), findsNothing);
     expect(find.text('Thông báo'), findsOneWidget);

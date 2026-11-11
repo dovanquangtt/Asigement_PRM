@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quanlinhansunhahang/screens/login_screen.dart';
-import 'package:quanlinhansunhahang/screens/payroll_screen.dart';
 import 'package:quanlinhansunhahang/screens/payroll_checks_screen.dart';
 import 'package:quanlinhansunhahang/screens/workspace_screen.dart';
-import 'package:quanlinhansunhahang/services/workforce_repository.dart';
 
 import 'database_fixture.dart';
 
@@ -79,6 +77,11 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await tester.pumpAndSettle();
+    // Đợi các lần tải nền của trang chủ kết thúc trước khi test đóng.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 500)),
+    );
+    await tester.pump(const Duration(seconds: 1));
     expect(find.byType(LoginPage), findsOneWidget);
     expect(find.byType(Workspace), findsNothing);
     expect(
@@ -88,94 +91,6 @@ void main() {
           .canPop(),
       isFalse,
     );
-  });
-
-  testWidgets('Employee payroll filters real slips and opens a selected slip', (
-    tester,
-  ) async {
-    int? openedId;
-    var calculateOpened = false;
-    final slips = <RowData>[
-      {
-        'id': 1,
-        'period_code': 'OCT_DRAFT',
-        'starts_on': '2026-10-01',
-        'ends_on': '2026-10-31',
-        'status': 'draft',
-        'net_pay_vnd': 10600000,
-        'gross_pay_vnd': 10700000,
-        'deductions_vnd': 100000,
-      },
-      {
-        'id': 2,
-        'period_code': 'SEP_PAID',
-        'starts_on': '2026-09-01',
-        'ends_on': '2026-09-30',
-        'status': 'paid',
-        'net_pay_vnd': 10200000,
-        'gross_pay_vnd': 10300000,
-        'deductions_vnd': 100000,
-      },
-    ];
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: EmployeePayrollScreen(
-            payslips: slips,
-            onRefresh: () async {},
-            onCheckPayroll: () => calculateOpened = true,
-            onOpen: (row) => openedId = row['id'] as int,
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('Bảng lương của tôi'), findsOneWidget);
-    expect(find.text('Kiểm tra 6 thao tác tính lương'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Bản nháp'), findsNothing);
-    expect(find.widgetWithText(ChoiceChip, 'Tất cả'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Đã duyệt'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Đã thanh toán'), findsOneWidget);
-
-    await tester.tap(find.text('Kiểm tra 6 thao tác tính lương'));
-    expect(calculateOpened, isTrue);
-    await tester.dragUntilVisible(
-      find.text('Phiếu #1'),
-      find.byType(ListView),
-      const Offset(0, -300),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Phiếu #1'), findsOneWidget);
-    await tester.dragUntilVisible(
-      find.text('Mở chi tiết bảng lương'),
-      find.byType(ListView),
-      const Offset(0, 300),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Mở chi tiết bảng lương'));
-    expect(openedId, 1);
-
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Đã thanh toán'));
-    await tester.pumpAndSettle();
-    expect(find.text('Phiếu #1'), findsNothing);
-    await tester.dragUntilVisible(
-      find.text('Phiếu #2'),
-      find.byType(ListView),
-      const Offset(0, -300),
-    );
-    await tester.ensureVisible(find.text('Phiếu #2'));
-    await tester.pumpAndSettle();
-    expect(find.text('Phiếu #2'), findsOneWidget);
-
-    await tester.dragUntilVisible(
-      find.text('Xem chi tiết bảng lương'),
-      find.byType(ListView),
-      const Offset(0, -300),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Xem chi tiết bảng lương'));
-    expect(openedId, 2);
   });
 
   testWidgets('Payroll checks have a separate six-row statistics table', (

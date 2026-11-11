@@ -120,6 +120,13 @@ void main() {
       await tap('Xác nhận điểm danh');
       expect(find.text('Gửi yêu cầu vào ca?'), findsOneWidget);
       await tap('Gửi yêu cầu');
+      // Chờ việc gửi hoàn tất (nút bị khóa) thay vì một khoảng chờ cố định, để không lỗi khi máy tải nặng.
+      for (var i = 0; i < 50 && enabled(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
       expect(sensors.reads, beforeConfirm + 3);
       expect(enabled(), isFalse);
       await tester.runAsync(() async {

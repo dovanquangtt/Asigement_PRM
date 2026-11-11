@@ -82,9 +82,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute<void>(
-          builder: (_) => homeFor(session),
-        ),
+        MaterialPageRoute<void>(builder: (_) => homeFor(session)),
       );
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
@@ -121,9 +119,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute<void>(
-          builder: (_) => homeFor(session),
-        ),
+        MaterialPageRoute<void>(builder: (_) => homeFor(session)),
       );
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
@@ -141,27 +137,27 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    const dark = Color(0xFF243E36);
+    const dark = Color(0xFF10302D);
     final theme = Theme.of(context);
     return Theme(
       data: theme.copyWith(
         colorScheme: ColorScheme.fromSeed(seedColor: dark),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFFF5F3EE),
+          fillColor: const Color(0xFFF1F8F7),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 18,
             vertical: 14,
           ),
-          labelStyle: const TextStyle(color: Color(0xFF74726D), fontSize: 14),
-          prefixIconColor: const Color(0xFF777368),
+          labelStyle: const TextStyle(color: Color(0xFF5E7C78), fontSize: 14),
+          prefixIconColor: const Color(0xFF5E7C78),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Color(0xFFB5883A), width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFF0F766E), width: 1.5),
           ),
         ),
       ),
@@ -175,9 +171,9 @@ class _LoginPageState extends State<LoginPage> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFFF3F0E8),
-                  Color(0xFFF8FAF7),
-                  Color(0xFFE9F0EA),
+                  Color(0xFFF1F8F7),
+                  Color(0xFFFFFFFF),
+                  Color(0xFFE0F2EF),
                 ],
               ),
             ),
@@ -219,7 +215,7 @@ class _LoginPageState extends State<LoginPage> {
                                   Text(
                                     'ẨM THỰC VIỆT · THÁI',
                                     style: TextStyle(
-                                      color: Color(0xFF947348),
+                                      color: Color(0xFF0F766E),
                                       fontSize: 10,
                                       letterSpacing: 1.5,
                                       fontWeight: FontWeight.w600,
@@ -229,7 +225,7 @@ class _LoginPageState extends State<LoginPage> {
                                   Text(
                                     'Một đội ngũ. Một tấm lòng.',
                                     style: TextStyle(
-                                      color: Color(0xFF7C827B),
+                                      color: Color(0xFF5E7C78),
                                       fontSize: 11,
                                     ),
                                   ),
@@ -244,7 +240,7 @@ class _LoginPageState extends State<LoginPage> {
                           padding: const EdgeInsets.all(22),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            border: Border.all(color: const Color(0xFFE4E9E1)),
+                            border: Border.all(color: const Color(0xFFD5E7E4)),
                             boxShadow: const [
                               BoxShadow(
                                 color: Color(0x0D243E36),
@@ -263,7 +259,7 @@ class _LoginPageState extends State<LoginPage> {
                                   const Text(
                                     'KHÔNG GIAN NHÂN SỰ',
                                     style: TextStyle(
-                                      color: Color(0xFF9B742F),
+                                      color: Color(0xFF0F766E),
                                       fontSize: 10,
                                       letterSpacing: 1.8,
                                       fontWeight: FontWeight.w700,
@@ -283,7 +279,7 @@ class _LoginPageState extends State<LoginPage> {
                                   const Text(
                                     'Mỗi ngày cùng nhau, mỗi ca thêm gắn kết.',
                                     style: TextStyle(
-                                      color: Color(0xFF77736C),
+                                      color: Color(0xFF5E7C78),
                                       fontSize: 12,
                                       height: 1.5,
                                     ),
@@ -415,7 +411,7 @@ class _LoginPageState extends State<LoginPage> {
                                       children: [
                                         Expanded(
                                           child: Divider(
-                                            color: Color(0xFFE7E1D7),
+                                            color: Color(0xFFD5E7E4),
                                           ),
                                         ),
                                         Padding(
@@ -425,14 +421,14 @@ class _LoginPageState extends State<LoginPage> {
                                           child: Text(
                                             'hoặc tiếp tục với',
                                             style: TextStyle(
-                                              color: Color(0xFF938D83),
+                                              color: Color(0xFF5E7C78),
                                               fontSize: 11,
                                             ),
                                           ),
                                         ),
                                         Expanded(
                                           child: Divider(
-                                            color: Color(0xFFE7E1D7),
+                                            color: Color(0xFFD5E7E4),
                                           ),
                                         ),
                                       ],
@@ -445,7 +441,7 @@ class _LoginPageState extends State<LoginPage> {
                                         foregroundColor: dark,
                                         minimumSize: const Size(0, 52),
                                         side: const BorderSide(
-                                          color: Color(0xFFDDD5C8),
+                                          color: Color(0xFFD5E7E4),
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
@@ -478,7 +474,7 @@ class _LoginPageState extends State<LoginPage> {
                           children: [
                             const Icon(
                               Icons.format_quote_rounded,
-                              color: Color(0xFFAD8545),
+                              color: Color(0xFF0F766E),
                               size: 24,
                             ),
                             const SizedBox(width: 8),
@@ -489,7 +485,7 @@ class _LoginPageState extends State<LoginPage> {
                                   const Text(
                                     'MỘT CHÚT CẢM HỨNG MỖI NGÀY',
                                     style: TextStyle(
-                                      color: Color(0xFF947348),
+                                      color: Color(0xFF0F766E),
                                       fontSize: 9,
                                       letterSpacing: 1.3,
                                       fontWeight: FontWeight.w700,
@@ -499,7 +495,7 @@ class _LoginPageState extends State<LoginPage> {
                                   Text(
                                     teamQuote,
                                     style: const TextStyle(
-                                      color: Color(0xFF52665B),
+                                      color: Color(0xFF5E7C78),
                                       fontSize: 12,
                                       height: 1.5,
                                       fontStyle: FontStyle.italic,
@@ -516,7 +512,7 @@ class _LoginPageState extends State<LoginPage> {
                           children: [
                             Icon(
                               Icons.shield_outlined,
-                              color: Color(0xFF727D73),
+                              color: Color(0xFF5E7C78),
                               size: 14,
                             ),
                             SizedBox(width: 6),
@@ -524,7 +520,7 @@ class _LoginPageState extends State<LoginPage> {
                               child: Text(
                                 'Đăng nhập bằng tài khoản đã được cấp.',
                                 style: TextStyle(
-                                  color: Color(0xFF727D73),
+                                  color: Color(0xFF5E7C78),
                                   fontSize: 11,
                                 ),
                               ),

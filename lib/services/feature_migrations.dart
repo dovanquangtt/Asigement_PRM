@@ -94,7 +94,7 @@ Future<void> migrateFeatures(Database db) async {
         'Chưa phân công nhân viên')
       WHERE note LIKE '[DEMO %] Dữ liệu mẫu để thử chức năng;%'
     """);
-    if (version >= 7) return;
+    if (version >= 8) return;
     if (version < 3) {
       // v3: duyệt thiết bị, liên kết Google và lưu kết quả kiểm tra lương.
       await tx.execute(
@@ -176,14 +176,42 @@ Future<void> migrateFeatures(Database db) async {
         "UPDATE attendance_records SET arrival_status=CASE WHEN check_in_at IS NULL THEN NULL WHEN late_minutes>0 THEN 'LATE' ELSE 'ON_TIME' END,attendance_state=CASE WHEN check_in_at IS NULL THEN 'MISSING_CHECK_IN' WHEN check_out_at IS NULL THEN 'IN_PROGRESS' ELSE 'COMPLETED' END",
       );
     }
-    // v7: employees accept or reject assigned shifts. Existing assignments count as accepted.
-    for (final column in [
-      "response_status TEXT NOT NULL DEFAULT 'accepted' CHECK(response_status IN ('pending','accepted','rejected'))",
-      'responded_at TEXT',
-      'response_note TEXT',
-    ]) {
-      await tx.execute('ALTER TABLE shift_assignments ADD COLUMN $column');
+    if (version < 7) {
+      // v7: employees accept or reject assigned shifts. Existing assignments count as accepted.
+      for (final column in [
+        "response_status TEXT NOT NULL DEFAULT 'accepted' CHECK(response_status IN ('pending','accepted','rejected'))",
+        'responded_at TEXT',
+        'response_note TEXT',
+      ]) {
+        await tx.execute('ALTER TABLE shift_assignments ADD COLUMN $column');
+      }
     }
-    await tx.execute('PRAGMA user_version=7');
+    if (version < 8) {
+      // v8: khiếu nại phiếu lương của nhân viên và tỷ lệ bảo hiểm (điểm cơ bản, 800 = 8%).
+      await tx.execute(
+        'ALTER TABLE payroll_policies ADD COLUMN insurance_rate_bp INTEGER NOT NULL DEFAULT 800 CHECK(insurance_rate_bp BETWEEN 0 AND 10000)',
+      );
+      await tx.execute(
+        "CREATE TABLE payroll_disputes (id INTEGER PRIMARY KEY AUTOINCREMENT, payslip_id INTEGER NOT NULL REFERENCES payslips(id), employee_id INTEGER NOT NULL REFERENCES employees(id), message TEXT NOT NULL CHECK(length(trim(message))>0), status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','resolved','rejected')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, resolved_by INTEGER REFERENCES users(id), resolved_at TEXT, resolution_note TEXT)",
+      );
+      await tx.execute(
+        "CREATE TABLE payroll_dispute_items (dispute_id INTEGER NOT NULL REFERENCES payroll_disputes(id), item_key TEXT NOT NULL CHECK(item_key IN ('base_salary','overtime','allowance','bonus','insurance','deduction')), PRIMARY KEY(dispute_id,item_key))",
+      );
+      await tx.execute(
+        "CREATE UNIQUE INDEX ux_payroll_dispute_pending ON payroll_disputes(payslip_id) WHERE status='pending'",
+      );
+      // Bản demo cũ: thêm một báo sai đã xử lý cho nhân viên mẫu (nếu có kỳ DEMO_PAID).
+      await tx.execute(
+        "INSERT INTO payroll_disputes (payslip_id,employee_id,message,status,created_at,resolved_by,resolved_at,resolution_note) "
+        "SELECT p.id,p.employee_id,'[DEMO] Phụ cấp ăn tháng này chưa đủ số ngày công.','resolved',pp.ends_on||' 13:00:00',"
+        "(SELECT id FROM users WHERE username='manager'),pp.ends_on||' 14:00:00','[DEMO] Đã kiểm tra lại, số liệu đúng.' "
+        "FROM payslips p JOIN payroll_periods pp ON pp.id=p.period_id "
+        "WHERE pp.code='DEMO_PAID' AND p.employee_id=(SELECT e.id FROM employees e JOIN users u ON u.id=e.user_id WHERE u.username='employee') LIMIT 1",
+      );
+      await tx.execute(
+        "INSERT INTO payroll_dispute_items (dispute_id,item_key) SELECT id,'allowance' FROM payroll_disputes WHERE message LIKE '[DEMO]%'",
+      );
+    }
+    await tx.execute('PRAGMA user_version=8');
   });
 }

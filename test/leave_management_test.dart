@@ -20,19 +20,18 @@ void main() {
         openDatabase: () async => f.db,
       );
 
-  Future<int> request({
-    int? type,
-    DateTime? start,
-    DateTime? end,
-  }) async {
+  Future<int> request({int? type, DateTime? start, DateTime? end}) async {
     await employee.createLeaveRequest(
       leaveTypeId: type ?? annual,
       start: start ?? from,
       end: end ?? to,
       reason: 'Việc gia đình',
     );
-    return (await f.db.query('leave_requests', orderBy: 'id DESC', limit: 1))
-            .single['id']
+    return (await f.db.query(
+          'leave_requests',
+          orderBy: 'id DESC',
+          limit: 1,
+        )).single['id']
         as int;
   }
 
@@ -54,19 +53,22 @@ void main() {
   });
   tearDown(() => f.dispose());
 
-  test('Employee sees leave balance, pending requests reduce what is left', () async {
-    var b = (await employee.leaveBalances()).firstWhere(
-      (r) => r['leave_type_id'] == annual,
-    );
-    expect(b['granted_minutes'], 960);
-    expect(b['remaining_minutes'], 960);
-    await request();
-    b = (await employee.leaveBalances()).firstWhere(
-      (r) => r['leave_type_id'] == annual,
-    );
-    expect(b['pending_minutes'], 480);
-    expect(b['remaining_minutes'], 480);
-  });
+  test(
+    'Employee sees leave balance, pending requests reduce what is left',
+    () async {
+      var b = (await employee.leaveBalances()).firstWhere(
+        (r) => r['leave_type_id'] == annual,
+      );
+      expect(b['granted_minutes'], 960);
+      expect(b['remaining_minutes'], 960);
+      await request();
+      b = (await employee.leaveBalances()).firstWhere(
+        (r) => r['leave_type_id'] == annual,
+      );
+      expect(b['pending_minutes'], 480);
+      expect(b['remaining_minutes'], 480);
+    },
+  );
 
   test('Submitting a request notifies reviewers; manager approves, balance is used and employee is told', () async {
     final id = await request();
@@ -82,10 +84,18 @@ void main() {
     expect(listed.first['remaining_minutes'], 960);
 
     await manager.reviewLeaveRequest(id, true, note: 'OK');
-    final row = (await f.db.query('leave_requests', where: 'id=?', whereArgs: [id])).single;
+    final row = (await f.db.query(
+      'leave_requests',
+      where: 'id=?',
+      whereArgs: [id],
+    )).single;
     expect(row['status'], 'approved');
     expect(row['reviewed_by'], manager.session.userId);
-    final balance = (await f.db.query('leave_balances', where: 'leave_type_id=?', whereArgs: [annual])).single;
+    final balance = (await f.db.query(
+      'leave_balances',
+      where: 'leave_type_id=?',
+      whereArgs: [annual],
+    )).single;
     expect(balance['used_minutes'], 480);
     final toEmployee = (await employee.notifications()).firstWhere(
       (n) => n['title'] == 'Kết quả duyệt nghỉ phép',
@@ -94,7 +104,13 @@ void main() {
     // Không duyệt lại lần nữa.
     await expectLater(
       manager.reviewLeaveRequest(id, true),
-      throwsA(isA<AuthException>().having((e) => e.message, 'message', 'Yêu cầu đã được xử lý.')),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          'Yêu cầu đã được xử lý.',
+        ),
+      ),
     );
   });
 
@@ -102,26 +118,47 @@ void main() {
     final id = await request();
     await expectLater(
       manager.reviewLeaveRequest(id, false),
-      throwsA(isA<AuthException>().having((e) => e.message, 'message', 'Nhập lý do từ chối nghỉ phép.')),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          'Nhập lý do từ chối nghỉ phép.',
+        ),
+      ),
     );
     await manager.reviewLeaveRequest(id, false, note: 'Thiếu người');
     expect(
-      (await f.db.query('leave_requests', where: 'id=?', whereArgs: [id])).single['status'],
+      (await f.db.query(
+        'leave_requests',
+        where: 'id=?',
+        whereArgs: [id],
+      )).single['status'],
       'rejected',
     );
     expect((await f.db.query('leave_balances')).single['used_minutes'], 0);
     expect(
-      (await employee.notifications()).any((n) => '${n['body']}'.contains('bị từ chối')),
+      (await employee.notifications()).any(
+        (n) => '${n['body']}'.contains('bị từ chối'),
+      ),
       isTrue,
     );
   });
 
   test('Not enough days left, overlapping shift, self review and role limits are enforced', () async {
     // 3 ngày > 2 ngày được cấp.
-    final big = await request(start: from, end: from.add(const Duration(days: 2, hours: 8)));
+    final big = await request(
+      start: from,
+      end: from.add(const Duration(days: 2, hours: 8)),
+    );
     await expectLater(
       manager.reviewLeaveRequest(big, true),
-      throwsA(isA<AuthException>().having((e) => e.message, 'message', 'Không đủ số ngày phép còn lại.')),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          'Không đủ số ngày phép còn lại.',
+        ),
+      ),
     );
     expect((await f.db.query('leave_balances')).single['used_minutes'], 0);
 
@@ -138,20 +175,49 @@ void main() {
     );
     await expectLater(
       manager.reviewLeaveRequest(clash, true),
-      throwsA(isA<AuthException>().having((e) => e.message, 'message', contains('đang có ca'))),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          contains('đang có ca'),
+        ),
+      ),
     );
     await manager.unassignShift(shift, employee.session.profile['id'] as int);
     await manager.reviewLeaveRequest(clash, true);
 
     // Nhân viên không có quyền xem/duyệt danh sách của quản lý.
-    await expectLater(employee.leaveRequestsForReview(), throwsA(isA<AuthException>()));
-    await expectLater(employee.reviewLeaveRequest(big, false, note: 'x'), throwsA(isA<AuthException>()));
+    await expectLater(
+      employee.leaveRequestsForReview(),
+      throwsA(isA<AuthException>()),
+    );
+    await expectLater(
+      employee.reviewLeaveRequest(big, false, note: 'x'),
+      throwsA(isA<AuthException>()),
+    );
     // Quản lý không tự duyệt yêu cầu của chính mình.
-    await manager.createLeaveRequest(leaveTypeId: annual, start: from, end: to, reason: 'Tôi nghỉ');
-    final own = (await f.db.query('leave_requests', orderBy: 'id DESC', limit: 1)).single['id'] as int;
+    await manager.createLeaveRequest(
+      leaveTypeId: annual,
+      start: from,
+      end: to,
+      reason: 'Tôi nghỉ',
+    );
+    final own =
+        (await f.db.query(
+              'leave_requests',
+              orderBy: 'id DESC',
+              limit: 1,
+            )).single['id']
+            as int;
     await expectLater(
       manager.reviewLeaveRequest(own, true),
-      throwsA(isA<AuthException>().having((e) => e.message, 'message', 'Không thể tự duyệt nghỉ phép của mình.')),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          'Không thể tự duyệt nghỉ phép của mình.',
+        ),
+      ),
     );
     // Admin duyệt được yêu cầu của quản lý.
     await f.db.insert('leave_balances', {
@@ -163,18 +229,32 @@ void main() {
     });
     await admin.reviewLeaveRequest(own, true);
     expect(
-      (await f.db.query('leave_requests', where: 'id=?', whereArgs: [own])).single['status'],
+      (await f.db.query(
+        'leave_requests',
+        where: 'id=?',
+        whereArgs: [own],
+      )).single['status'],
       'approved',
     );
   });
 
   test('Invalid leave type and empty reason are rejected', () async {
     await expectLater(
-      employee.createLeaveRequest(leaveTypeId: 99999, start: from, end: to, reason: 'x'),
+      employee.createLeaveRequest(
+        leaveTypeId: 99999,
+        start: from,
+        end: to,
+        reason: 'x',
+      ),
       throwsA(isA<AuthException>()),
     );
     await expectLater(
-      employee.createLeaveRequest(leaveTypeId: annual, start: from, end: to, reason: '  '),
+      employee.createLeaveRequest(
+        leaveTypeId: annual,
+        start: from,
+        end: to,
+        reason: '  ',
+      ),
       throwsA(isA<AuthException>()),
     );
     expect(await f.db.query('leave_requests'), isEmpty);

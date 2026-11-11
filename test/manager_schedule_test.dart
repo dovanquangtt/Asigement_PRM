@@ -21,31 +21,37 @@ void main() {
   );
   tearDown(() => fixture.dispose());
 
-  test('Manager can view shift overview with metrics and staffing counts', () async {
-    final manager = await repository('manager', 'Manager@12345');
-    final employee = await repository('employee', 'Employee@12345');
-    final branch = (await fixture.db.query('branches')).first['id'] as int;
+  test(
+    'Manager can view shift overview with metrics and staffing counts',
+    () async {
+      final manager = await repository('manager', 'Manager@12345');
+      final employee = await repository('employee', 'Employee@12345');
+      final branch = (await fixture.db.query('branches')).first['id'] as int;
 
-    final shiftId = await manager.createShift(
-      branchId: branch,
-      start: DateTime.parse('2026-11-10T08:00:00Z'),
-      end: DateTime.parse('2026-11-10T16:00:00Z'),
-      requiredStaff: 2,
-      note: 'Ca quản lý kiểm thử',
-    );
+      final shiftId = await manager.createShift(
+        branchId: branch,
+        start: DateTime.parse('2026-11-10T08:00:00Z'),
+        end: DateTime.parse('2026-11-10T16:00:00Z'),
+        requiredStaff: 2,
+        note: 'Ca quản lý kiểm thử',
+      );
 
-    final empId = employee.session.profile['id'] as int;
-    await manager.assignShift(shiftId, empId);
+      final empId = employee.session.profile['id'] as int;
+      await manager.assignShift(shiftId, empId);
 
-    final overview = await manager.managerShiftOverview();
-    expect(overview, isNotEmpty);
+      final overview = await manager.managerShiftOverview();
+      expect(overview, isNotEmpty);
 
-    final createdShift = overview.firstWhere((s) => s['id'] == shiftId);
-    expect(createdShift['branch_name'], isNotEmpty);
-    expect(createdShift['assigned_count'], 1);
-    expect(createdShift['required_staff'], 2);
-    expect(createdShift['assigned_staff_names'], contains(employee.session.profile['full_name']));
-  });
+      final createdShift = overview.firstWhere((s) => s['id'] == shiftId);
+      expect(createdShift['branch_name'], isNotEmpty);
+      expect(createdShift['assigned_count'], 1);
+      expect(createdShift['required_staff'], 2);
+      expect(
+        createdShift['assigned_staff_names'],
+        contains(employee.session.profile['full_name']),
+      );
+    },
+  );
 
   test('Manager can query eligible employees with availability and conflict reasons', () async {
     final manager = await repository('manager', 'Manager@12345');
@@ -98,20 +104,38 @@ void main() {
     // Unassign
     await manager.unassignShift(shiftId, empId);
     final overviewAfterUnassign = await manager.managerShiftOverview();
-    final shiftAfter = overviewAfterUnassign.firstWhere((s) => s['id'] == shiftId);
+    final shiftAfter = overviewAfterUnassign.firstWhere(
+      (s) => s['id'] == shiftId,
+    );
     expect(shiftAfter['assigned_count'], 0);
 
     // Cancel shift
     await manager.cancelShift(shiftId);
-    final shiftRow = (await fixture.db.query('shifts', where: 'id=?', whereArgs: [shiftId])).single;
+    final shiftRow = (await fixture.db.query(
+      'shifts',
+      where: 'id=?',
+      whereArgs: [shiftId],
+    )).single;
     expect(shiftRow['status'], 'cancelled');
   });
 
-  test('Employee cannot access manager shift overview or assign staff', () async {
-    final employee = await repository('employee', 'Employee@12345');
-    await expectLater(employee.managerShiftOverview(), throwsA(isA<AuthException>()));
-    await expectLater(employee.eligibleEmployeesForShift(1), throwsA(isA<AuthException>()));
-    await expectLater(employee.unassignShift(1, 1), throwsA(isA<AuthException>()));
-    await expectLater(employee.cancelShift(1), throwsA(isA<AuthException>()));
-  });
+  test(
+    'Employee cannot access manager shift overview or assign staff',
+    () async {
+      final employee = await repository('employee', 'Employee@12345');
+      await expectLater(
+        employee.managerShiftOverview(),
+        throwsA(isA<AuthException>()),
+      );
+      await expectLater(
+        employee.eligibleEmployeesForShift(1),
+        throwsA(isA<AuthException>()),
+      );
+      await expectLater(
+        employee.unassignShift(1, 1),
+        throwsA(isA<AuthException>()),
+      );
+      await expectLater(employee.cancelShift(1), throwsA(isA<AuthException>()));
+    },
+  );
 }
