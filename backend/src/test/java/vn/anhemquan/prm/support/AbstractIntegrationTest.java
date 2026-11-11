@@ -1,7 +1,7 @@
 package vn.anhemquan.prm.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

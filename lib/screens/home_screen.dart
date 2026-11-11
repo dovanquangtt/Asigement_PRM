@@ -357,14 +357,6 @@ class HomeScreen extends StatelessWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: actions.requestList,
             ),
-            ListTile(
-              leading: const Icon(Icons.star_outline, color: green),
-              title: const Text('Tặng sao cho Linh'),
-              onTap: () {
-                controller.update(() => controller.stars++);
-                actions.toast('Đã tặng 1 sao');
-              },
-            ),
             if (controller.role == 'Admin')
               ListTile(
                 leading: const Icon(

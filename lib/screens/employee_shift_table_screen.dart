@@ -1,31 +1,9 @@
 import 'package:flutter/material.dart';
+import '../widgets/review_note_dialog.dart';
 
 import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
-
-const _responseLabels = {
-  'pending': 'Chờ xác nhận',
-  'accepted': 'Đã chấp nhận',
-  'rejected': 'Đã từ chối',
-};
-
-Color _responseColor(String status) => switch (status) {
-  'accepted' => Colors.green.shade700,
-  'rejected' => Colors.red.shade700,
-  _ => Colors.orange.shade800,
-};
-
-String _dayText(Object? value) {
-  final d = utcTime(value).toLocal();
-  const names = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-  return '${names[d.weekday - 1]} ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
-}
-
-String _clockText(Object? value) {
-  if (value == null) return '--:--';
-  final d = utcTime(value).toLocal();
-  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-}
+import '../widgets/employee_shift_row_card.dart';
 
 /// Bảng toàn bộ ca làm của từng nhân viên: chọn một nhân viên để xem mọi ca được phân,
 /// trạng thái họ đã chấp nhận hay từ chối, và giờ chấm công. Dành cho quản lý / Admin.
@@ -71,6 +49,32 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
     from: month,
     to: DateTime(month.year, month.month + 1, 0),
   );
+
+  /// Hỏi lý do rồi duyệt/từ chối một lượt điểm danh đang chờ; từ chối bắt buộc có lý do.
+  Future<void> _review(int eventId, bool approve, String label) async {
+    final note = await askReviewNote(context, approve: approve, label: label);
+    if (note == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.repository.reviewAttendance(eventId, approve, note: note);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            approve
+                ? 'Đã duyệt điểm danh $label.'
+                : 'Đã từ chối điểm danh $label.',
+          ),
+        ),
+      );
+    } on AuthException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Không xử lý được. Hãy thử lại.')),
+      );
+    }
+    if (mounted) _refresh();
+  }
 
   void _refresh() {
     final next = _load();
@@ -141,6 +145,7 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: DropdownButtonFormField<int>(
+                  key: const Key('table-employee'),
                   initialValue: employeeId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Nhân viên'),
@@ -192,17 +197,17 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
                             _chip(
                               'Chờ xác nhận',
                               sum['pending'],
-                              _responseColor('pending'),
+                              shiftResponseColor('pending'),
                             ),
                             _chip(
                               'Đã chấp nhận',
                               sum['accepted'],
-                              _responseColor('accepted'),
+                              shiftResponseColor('accepted'),
                             ),
                             _chip(
                               'Đã từ chối',
                               sum['rejected'],
-                              _responseColor('rejected'),
+                              shiftResponseColor('rejected'),
                             ),
                           ],
                         ),
@@ -217,59 +222,15 @@ class _EmployeeShiftTableScreenState extends State<EmployeeShiftTableScreen> {
                             ),
                           )
                         else
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: DataTable(
-                              columns: const [
-                                DataColumn(label: Text('Ngày')),
-                                DataColumn(label: Text('Ca')),
-                                DataColumn(label: Text('Chi nhánh')),
-                                DataColumn(label: Text('Phản hồi')),
-                                DataColumn(label: Text('Vào')),
-                                DataColumn(label: Text('Ra')),
-                                DataColumn(label: Text('Ghi chú')),
-                              ],
-                              rows: [
-                                for (final r in rows)
-                                  DataRow(
-                                    cells: [
-                                      DataCell(Text(_dayText(r['starts_at']))),
-                                      DataCell(
-                                        Text(
-                                          '${_clockText(r['starts_at'])}-${_clockText(r['ends_at'])}',
-                                        ),
-                                      ),
-                                      DataCell(Text('${r['branch_name']}')),
-                                      DataCell(
-                                        Text(
-                                          _responseLabels[r['response_status']] ??
-                                              '${r['response_status']}',
-                                          style: TextStyle(
-                                            color: _responseColor(
-                                              '${r['response_status']}',
-                                            ),
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(_clockText(r['check_in_at'])),
-                                      ),
-                                      DataCell(
-                                        Text(_clockText(r['check_out_at'])),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          r['response_status'] == 'rejected'
-                                              ? 'Lý do: ${r['response_note'] ?? ''}'
-                                              : 'Phân bởi ${r['assigned_by_name'] ?? ''}',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                          ),
+                          ...[
+for (final r in rows)
+  EmployeeShiftRowCard(
+    key: ValueKey('shift-row-${r['assignment_id']}'),
+    row: r,
+    parseTime: (v) => utcTime(v),
+    onReview: _review,
+  ),
+],
                       ],
                     );
                   },

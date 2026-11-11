@@ -1,11 +1,15 @@
 package vn.anhemquan.prm.auth;
 
+import vn.anhemquan.prm.service.GoogleTokenVerifier;
+import vn.anhemquan.prm.dto.GoogleIdentity;
+import vn.anhemquan.prm.service.AuthService;
+
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import vn.anhemquan.prm.common.ApiException;
+import vn.anhemquan.prm.exception.ApiException;
 import vn.anhemquan.prm.support.AbstractIntegrationTest;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,6 +27,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
     @BeforeEach
     void clean() {
         String names = "('authit-manager', 'authit-employee', 'authit-admin', 'authit-anna', 'authit-bob', 'authit-c1', 'authit-c2')";
+        jdbc.update("DELETE FROM notification_recipients WHERE user_id IN (SELECT id FROM users WHERE username IN " + names + ")");
         jdbc.update("DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE username IN " + names + ")");
         jdbc.update("DELETE FROM users WHERE username IN " + names);
     }

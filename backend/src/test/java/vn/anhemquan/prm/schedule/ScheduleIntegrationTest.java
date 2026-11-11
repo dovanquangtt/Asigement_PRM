@@ -1,6 +1,6 @@
 package vn.anhemquan.prm.schedule;
 
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;

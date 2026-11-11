@@ -12,6 +12,7 @@ import 'login_screen.dart';
 import 'operations_screen.dart';
 import 'notifications_screen.dart';
 import 'attendance_management_screen.dart';
+import 'dashboard_screen.dart';
 import 'employee_shift_table_screen.dart';
 import 'payroll_screen.dart';
 import 'schedule_screen.dart';
@@ -110,6 +111,8 @@ class _WorkspaceState extends State<Workspace> {
       MaterialPageRoute<void>(
         builder: (_) => kind == 'shift_table'
             ? EmployeeShiftTableScreen(repository: repository)
+            : kind == 'dashboard'
+            ? DashboardScreen(repository: repository)
             : kind == 'attendance_review' || kind == 'attendance_management'
             ? AttendanceManagementScreen(
                 repository: repository,
@@ -330,6 +333,77 @@ class _WorkspaceState extends State<Workspace> {
     if (saved == true && mounted) await refresh();
   }
 
+  Future<void> editEmployee(RowData row) async {
+    await featureForm(
+      context,
+      'Sửa nhân viên',
+      [
+        InputSpec(
+          'code',
+          'Mã nhân viên',
+          value: row['employee_code']?.toString() ?? '',
+        ),
+        InputSpec('name', 'Họ tên', value: row['full_name']?.toString() ?? ''),
+        InputSpec(
+          'phone',
+          'Điện thoại',
+          value: row['phone']?.toString() ?? '',
+          optional: true,
+        ),
+      ],
+      (v) => repository.updateEmployee(
+        row['id'] as int,
+        code: v['code']!,
+        name: v['name']!,
+        phone: v['phone']!,
+      ),
+    );
+    if (mounted) await refresh();
+  }
+
+  Future<void> deleteEmployee(RowData row) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Xóa nhân viên?'),
+        content: Text(
+          'Xóa "${row['full_name']}"? Hồ sơ sẽ chuyển sang đã nghỉ việc (giữ lịch sử chấm công và lương), tài khoản đăng nhập bị khóa và nhân viên được gỡ khỏi các ca chưa bắt đầu.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await repository.deleteEmployee(row['id'] as int);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã xóa nhân viên.')),
+      );
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không xóa được nhân viên. Hãy thử lại.')),
+        );
+      }
+    }
+    if (mounted) await refresh();
+  }
+
   String value(RowData row, String key) => row[key]?.toString() ?? 'Chưa có';
   String currency(Object? amount) =>
       '${(amount ?? 0).toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')} ₫';
@@ -390,6 +464,10 @@ class _WorkspaceState extends State<Workspace> {
             ('attendance_management', 'Công của tôi & yêu cầu sửa công'),
           if (widget.session.role != 'Nhân viên')
             ('shift_table', 'Bảng ca theo từng nhân viên'),
+          if (widget.session.role != 'Nhân viên')
+            ('leave_review', 'Duyệt nghỉ phép'),
+          if (widget.session.role != 'Nhân viên')
+            ('dashboard', 'Dashboard thống kê'),
           if (widget.session.role != 'Nhân viên') ...[
             ('devices', 'Duyệt thiết bị nhân viên'),
             ('branches', 'Cấu hình GPS & Wi-Fi chi nhánh'),
@@ -504,6 +582,15 @@ class _WorkspaceState extends State<Workspace> {
               title: Text(value(row, 'full_name')),
               subtitle: Text(
                 '${value(row, 'employee_code')} • ${value(row, 'branch_name')}\n${value(row, 'phone')}',
+              ),
+              trailing: PopupMenuButton<String>(
+                tooltip: 'Thao tác',
+                onSelected: (v) =>
+                    v == 'edit' ? editEmployee(row) : deleteEmployee(row),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Sửa nhân viên')),
+                  PopupMenuItem(value: 'delete', child: Text('Xóa nhân viên')),
+                ],
               ),
             ),
             'shifts' => ListTile(

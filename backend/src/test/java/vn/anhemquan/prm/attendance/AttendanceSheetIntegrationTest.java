@@ -1,5 +1,7 @@
 package vn.anhemquan.prm.attendance;
 
+import vn.anhemquan.prm.service.AttendanceClock;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -23,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import vn.anhemquan.prm.support.AbstractIntegrationTest;
 
 /** Attendance sheet (per employee, date range) and reviewers' direct edit / void. */

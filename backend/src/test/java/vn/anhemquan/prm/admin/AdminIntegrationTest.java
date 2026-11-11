@@ -1,6 +1,6 @@
 package vn.anhemquan.prm.admin;
 
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

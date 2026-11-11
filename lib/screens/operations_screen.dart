@@ -250,6 +250,7 @@ class _OperationsPageState extends State<OperationsPage> {
     'devices': 'Duyệt thiết bị',
     'payroll': 'Kỳ lương & 6 bước',
     'swaps': 'Yêu cầu đổi ca',
+    'leave_review': 'Duyệt nghỉ phép',
     'stars': 'Sao nhân viên',
     'closures': 'Báo cáo đóng ca',
     'branches': 'Cấu hình điểm danh',
@@ -272,6 +273,7 @@ class _OperationsPageState extends State<OperationsPage> {
     'devices' => r.devices(),
     'payroll' => r.periods(),
     'swaps' => r.swaps(),
+    'leave_review' => r.leaveRequestsForReview(),
     'stars' => r.stars(),
     'closures' => r.closures(),
     'branches' => r.branches(),
@@ -317,6 +319,30 @@ class _OperationsPageState extends State<OperationsPage> {
     onPressed: () => action(work, success: success),
     child: Text(label),
   );
+  /// Duyệt/từ chối yêu cầu nghỉ phép; từ chối bắt buộc có lý do.
+  Future<void> reviewLeave(RowData row, bool approve) async {
+    await featureForm(
+      context,
+      approve ? 'Duyệt nghỉ phép' : 'Từ chối nghỉ phép',
+      [
+        InputSpec(
+          'note',
+          approve ? 'Nhận xét (nếu có)' : 'Lý do từ chối',
+          optional: approve,
+        ),
+      ],
+      (v) => r.reviewLeaveRequest(
+        row['id'] as int,
+        approve,
+        note: v['note'] ?? '',
+      ),
+    );
+    if (mounted) await refresh();
+  }
+
+  static String leaveDays(int minutes) =>
+      (minutes / 480).toStringAsFixed(minutes % 480 == 0 ? 0 : 1);
+
   Future<void> reviewAttendance(RowData row, bool approve) async {
     await featureForm(
       context,
@@ -451,40 +477,44 @@ class _OperationsPageState extends State<OperationsPage> {
     await refresh();
   }
 
-  Future<void> award(RowData employee) async {
+  /// Sửa giờ, số người cần và ghi chú của ca; nhân viên trong ca được báo để xác nhận lại.
+  Future<void> editShift(RowData row) async {
     await featureForm(
       context,
-      'Tặng / trừ sao',
-      const [
-        InputSpec('delta', 'Số sao (+ hoặc -)', value: '1', number: true),
-        InputSpec('reason', 'Lý do'),
+      'Sửa ca làm',
+      [
+        InputSpec(
+          'start',
+          'Bắt đầu (YYYY-MM-DD HH:mm, giờ VN)',
+          value: localTime(row['starts_at']),
+        ),
+        InputSpec(
+          'end',
+          'Kết thúc (YYYY-MM-DD HH:mm, giờ VN)',
+          value: localTime(row['ends_at']),
+        ),
+        InputSpec(
+          'count',
+          'Số nhân viên cần',
+          value: '${row['required_staff'] ?? 1}',
+          number: true,
+        ),
+        InputSpec(
+          'note',
+          'Ghi chú',
+          value: row['note']?.toString() ?? '',
+          optional: true,
+        ),
       ],
-      (v) => r.awardStars(
-        employee['employee_id'] as int,
-        int.parse(v['delta']!),
-        v['reason']!,
+      (v) => r.updateShift(
+        row['id'] as int,
+        start: inputTime(v['start']!),
+        end: inputTime(v['end']!),
+        requiredStaff: int.parse(v['count']!),
+        note: v['note']!,
       ),
     );
-    if (mounted) {
-      await showDialog<void>(
-        context: context,
-        builder: (c) => AlertDialog(
-          content: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 700),
-            builder: (_, v, child) => Transform.scale(scale: v, child: child),
-            child: const Icon(Icons.star, size: 100, color: Colors.amber),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Đóng'),
-            ),
-          ],
-        ),
-      );
-      await refresh();
-    }
+    if (mounted) await refresh();
   }
 
   /// Xóa (hủy) ca: nhân viên trong ca được thông báo và ca biến mất khỏi lịch của họ.
@@ -546,17 +576,28 @@ class _OperationsPageState extends State<OperationsPage> {
             shiftTile,
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => deleteShift(row['id'] as int),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red.shade700,
-                    side: BorderSide(color: Colors.red.shade200),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => editShift(row),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Sửa ca'),
+                    ),
                   ),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Xóa ca làm'),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => deleteShift(row['id'] as int),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade200),
+                      ),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Xóa ca làm'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -763,6 +804,43 @@ class _OperationsPageState extends State<OperationsPage> {
             ),
           ],
         );
+      case 'leave_review':
+        final status = '${row['status']}';
+        final remaining = row['remaining_minutes'] as int? ?? 0;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              key: ValueKey('leave-${row['id']}'),
+              title: Text(
+                '${row['full_name']} • ${row['leave_type_name']} (${leaveDays(row['requested_minutes'] as int)} ngày)',
+              ),
+              subtitle: Text(
+                '${localTime(row['starts_at'])} — ${localTime(row['ends_at'])}\nLý do: ${row['reason']}\nCòn ${leaveDays(remaining)} ngày phép • ${switch (status) {
+                  'approved' => 'Đã duyệt',
+                  'rejected' => 'Đã từ chối',
+                  'cancelled' => 'Đã hủy',
+                  _ => 'Chờ duyệt',
+                }}${(row['review_note'] ?? '').toString().isEmpty ? '' : '\nNhận xét: ${row['review_note']}'}',
+              ),
+            ),
+            if (status == 'pending')
+              Wrap(
+                children: [
+                  TextButton(
+                    key: ValueKey('leave-approve-${row['id']}'),
+                    onPressed: () => reviewLeave(row, true),
+                    child: const Text('Duyệt'),
+                  ),
+                  TextButton(
+                    key: ValueKey('leave-reject-${row['id']}'),
+                    onPressed: () => reviewLeave(row, false),
+                    child: const Text('Từ chối'),
+                  ),
+                ],
+              ),
+          ],
+        );
       case 'swaps':
         return Column(
           children: [
@@ -837,12 +915,6 @@ class _OperationsPageState extends State<OperationsPage> {
           ),
           title: Text('${row['full_name']}'),
           subtitle: Text('${row['total_stars']} sao'),
-          trailing: manager
-              ? IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () => action(() => award(row)),
-                )
-              : null,
         );
       case 'closures':
         return Column(
@@ -2032,11 +2104,22 @@ class _ClosurePageState extends State<ClosurePage> {
   final note = TextEditingController();
   String? photo;
   String? error;
+  String? blocked;
   bool busy = false;
   @override
   void initState() {
     super.initState();
     recover();
+    checkEligibility();
+  }
+
+  Future<void> checkEligibility() async {
+    try {
+      final reason = await widget.repository.closureBlockedReason(
+        widget.assignmentId,
+      );
+      if (mounted) setState(() => blocked = reason);
+    } catch (_) {}
   }
 
   Future<void> keep(XFile f) async {
@@ -2115,6 +2198,35 @@ class _ClosurePageState extends State<ClosurePage> {
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        const Text(
+          'Chỉ gửi báo cáo sau khi đã điểm danh ra ca. Điểm danh vào ca chưa đủ; '
+          'nếu lượt ra ca đang chờ quản lý xác nhận, hãy chờ được duyệt trước.',
+        ),
+        if (blocked != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            key: const Key('closure-blocked'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade800),
+                const SizedBox(width: 10),
+                Expanded(child: Text(blocked!)),
+                IconButton(
+                  tooltip: 'Kiểm tra lại',
+                  onPressed: checkEligibility,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         if (photo != null) Image.file(File(photo!), height: 240),
         OutlinedButton.icon(
           onPressed: busy ? null : capture,
@@ -2132,7 +2244,7 @@ class _ClosurePageState extends State<ClosurePage> {
           Text(error!, style: const TextStyle(color: Colors.red)),
         const SizedBox(height: 16),
         FilledButton(
-          onPressed: busy ? null : submit,
+          onPressed: busy || blocked != null ? null : submit,
           child: Text(busy ? 'Đang gửi…' : 'Gửi báo cáo đóng ca'),
         ),
       ],

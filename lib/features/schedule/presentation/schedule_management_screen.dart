@@ -106,8 +106,9 @@ class _ScheduleManagementScreenState extends State<ScheduleManagementScreen> {
         note: input.note,
       );
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         _snack(scheduleError(e, fallback: 'Không tạo được ca làm. Thử lại.'));
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -660,8 +661,9 @@ class _AssignShiftSheetState extends State<AssignShiftSheet> {
                       ),
                     );
                   }
-                  if (!snapshot.hasData)
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
+                  }
                   final all = snapshot.data!;
                   if (all.isEmpty) {
                     return const Center(
@@ -683,10 +685,11 @@ class _AssignShiftSheetState extends State<AssignShiftSheet> {
                                 .contains(query),
                       )
                       .toList();
-                  if (rows.isEmpty)
+                  if (rows.isEmpty) {
                     return const Center(
                       child: Text('Không tìm thấy nhân viên.'),
                     );
+                  }
                   return ListView.separated(
                     itemCount: rows.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),

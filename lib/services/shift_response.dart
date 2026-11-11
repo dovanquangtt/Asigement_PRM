@@ -126,12 +126,28 @@ extension ShiftResponse on WorkforceRepository {
         'Chỉ được xử lý chấm công trong chi nhánh của mình.',
       );
     }
-    final rows = await db.rawQuery(
-      "SELECT a.id assignment_id,s.id shift_id,s.starts_at,s.ends_at,s.branch_id,b.name branch_name,s.status shift_status,a.status assignment_status,a.response_status,a.responded_at,a.response_note,a.assigned_at,COALESCE(ae.full_name,au.username) assigned_by_name,r.check_in_at,r.check_out_at,r.attendance_state "
+    final raw = await db.rawQuery(
+      "SELECT a.id assignment_id,s.id shift_id,s.starts_at,s.ends_at,s.branch_id,b.name branch_name,s.status shift_status,a.status assignment_status,a.response_status,a.responded_at,a.response_note,a.assigned_at,COALESCE(ae.full_name,au.username) assigned_by_name,r.check_in_at,r.check_out_at,r.attendance_state,"
+      "(SELECT ev.id FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.event_type='check_in' AND ev.result='pending_review' ORDER BY ev.id DESC LIMIT 1) pending_check_in_id,"
+      "(SELECT ev.id FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.event_type='check_out' AND ev.result='pending_review' ORDER BY ev.id DESC LIMIT 1) pending_check_out_id,"
+      "(SELECT ev.occurred_at FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.event_type='check_in' AND ev.result='pending_review' ORDER BY ev.id DESC LIMIT 1) pending_check_in_at,"
+      "(SELECT ev.occurred_at FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.event_type='check_out' AND ev.result='pending_review' ORDER BY ev.id DESC LIMIT 1) pending_check_out_at,"
+      "(SELECT COUNT(*) FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.result='pending_review') pending_events,"
+      "(SELECT COUNT(*) FROM attendance_events ev WHERE ev.assignment_id=a.id AND ev.result='rejected') rejected_events "
       "FROM shift_assignments a JOIN shifts s ON s.id=a.shift_id JOIN branches b ON b.id=s.branch_id LEFT JOIN users au ON au.id=a.assigned_by LEFT JOIN employees ae ON ae.user_id=a.assigned_by LEFT JOIN attendance_records r ON r.assignment_id=a.id "
       "WHERE a.employee_id=? AND s.status<>'cancelled' AND (a.status<>'cancelled' OR a.response_status='rejected') AND date(s.starts_at,'localtime') BETWEEN ? AND ? ORDER BY s.starts_at",
       [employeeId, day(start), day(end)],
     );
+    final clock = DateTime.now().toUtc();
+    final rows = [
+      for (final r in raw)
+        <String, Object?>{
+          ...r,
+          'sheet_status': r['response_status'] == 'rejected'
+              ? null
+              : AttendanceSheet.sheetStatus(r, clock),
+        },
+    ];
     int count(String status) =>
         rows.where((r) => r['response_status'] == status).length;
     return {

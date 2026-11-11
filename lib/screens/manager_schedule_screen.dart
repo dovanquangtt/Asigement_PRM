@@ -101,6 +101,46 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
     }
   }
 
+  /// Sửa giờ, số người cần và ghi chú; nhân viên trong ca được báo để xác nhận lại.
+  Future<void> _editShift(RowData shift) async {
+    await featureForm(
+      context,
+      'Sửa ca làm',
+      [
+        InputSpec(
+          'start',
+          'Bắt đầu (YYYY-MM-DD HH:mm, giờ VN)',
+          value: localTime(shift['starts_at']),
+        ),
+        InputSpec(
+          'end',
+          'Kết thúc (YYYY-MM-DD HH:mm, giờ VN)',
+          value: localTime(shift['ends_at']),
+        ),
+        InputSpec(
+          'count',
+          'Số nhân viên cần',
+          value: '${shift['required_staff'] ?? 1}',
+          number: true,
+        ),
+        InputSpec(
+          'note',
+          'Ghi chú',
+          value: shift['note']?.toString() ?? '',
+          optional: true,
+        ),
+      ],
+      (v) => r.updateShift(
+        shift['id'] as int,
+        start: inputTime(v['start']!),
+        end: inputTime(v['end']!),
+        requiredStaff: int.parse(v['count']!),
+        note: v['note']!,
+      ),
+    );
+    if (mounted) _reload();
+  }
+
   /// Xóa (hủy) ca: nhân viên được phân vào ca nhận thông báo và ca biến mất khỏi lịch của họ.
   Future<void> _deleteShift(int shiftId, String shiftTitleText) async {
     final ok = await showDialog<bool>(
@@ -602,11 +642,6 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
     final assignedStaffNames = shift['assigned_staff_names']?.toString() ?? '';
     final isUnderstaffed = assignedCount < requiredStaff;
 
-    final nowUtc = DateTime.now().toUtc();
-    final isPast = utcTime(shift['ends_at']).isBefore(nowUtc);
-    final isInProgress =
-        utcTime(shift['starts_at']).isBefore(nowUtc) && !isPast;
-
     final List<String> staffList = assignedStaffNames.isNotEmpty
         ? assignedStaffNames.split(', ').where((s) => s.trim().isNotEmpty).toList()
         : [];
@@ -889,6 +924,27 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
+                            onPressed: () => _editShift(shift),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            label: const Text(
+                              'Sửa ca làm',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
                             onPressed: () => _deleteShift(
                               shiftId,
                               '$title • ${startVn.day}/${startVn.month}',
@@ -927,6 +983,7 @@ class _ManagerScheduleScreenState extends State<ManagerScheduleScreen> {
 /// Modal Phân ca thông minh (hiển thị nhân viên khả dụng & xung đột)
 class AssignEmployeeModal extends StatefulWidget {
   const AssignEmployeeModal({
+    super.key,
     required this.repository,
     required this.shiftId,
     required this.shiftTitle,
@@ -1100,7 +1157,7 @@ class _AssignEmployeeModalState extends State<AssignEmployeeModal> {
 
                     return ListView.separated(
                       itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final emp = filtered[index];
                         final empId = emp['id'] as int;
@@ -1374,7 +1431,7 @@ class _CreateShiftModalState extends State<_CreateShiftModal> {
 
                 // Chọn Chi nhánh
                 DropdownButtonFormField<int>(
-                  value: branchId,
+                  initialValue: branchId,
                   decoration: InputDecoration(
                     labelText: 'Chi nhánh',
                     border: OutlineInputBorder(

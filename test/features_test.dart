@@ -424,26 +424,61 @@ void main() {
     );
     expect(await f.db.rawQuery('PRAGMA foreign_key_check'), isEmpty);
   });
-  test(
-    'M06 stars persist in view, employee cannot award or read others',
-    () async {
-      await manager.awardStars(
-        employee.session.profile['id'] as int,
-        2,
-        'Làm tốt',
-      );
-      expect((await employee.stars()).single['total_stars'], 2);
-      await expectLater(
-        employee.awardStars(
-          manager.session.profile['id'] as int,
-          1,
-          'Không có quyền',
+  test('M06 stars are read-only: employee sees only their own, awarding was removed', () async {
+    await f.db.insert('star_events', {
+      'employee_id': employee.session.profile['id'] as int,
+      'stars_delta': 2,
+      'reason': 'Làm tốt',
+      'awarded_by': manager.session.userId,
+    });
+    expect((await employee.stars()).single['total_stars'], 2);
+    expect(await manager.stars(), isNotEmpty);
+    expect(await employee.stars(), hasLength(1));
+  });
+  test('M07 explains why closing is blocked while check-out is pending or rejected', () async {
+    final a = await assigned();
+    final file = File('${f.directory.path}/photo2.jpg');
+    await file.writeAsBytes([255, 216, 255, 217]);
+    await ready();
+    await employee.recordAttendance(a, 'check_in', evidence(start), now: start);
+    // Wrong Wi-Fi => the check-out goes to manual review instead of the timesheet.
+    await employee.submitAttendance(
+      a,
+      'check_out',
+      evidence(end, bssid: '11:22:33:44:55:66'),
+      now: end,
+    );
+    expect(
+      await employee.closureBlockedReason(a),
+      contains('đang chờ quản lý duyệt'),
+    );
+    await expectLater(
+      employee.closeAssignment(a, 'Bàn giao', file.path),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          contains('đang chờ quản lý duyệt'),
         ),
-        throwsA(isA<AuthException>()),
-      );
-      expect(await employee.stars(), hasLength(1));
-    },
-  );
+      ),
+    );
+    final event = (await f.db.query(
+      'attendance_events',
+      where: "event_type='check_out' AND result='pending_review'",
+    )).single;
+    await manager.reviewAttendance(
+      event['id'] as int,
+      false,
+      note: 'Sai Wi-Fi',
+    );
+    expect(
+      await employee.closureBlockedReason(a),
+      contains('đã bị từ chối'),
+    );
+    await employee.recordAttendance(a, 'check_out', evidence(end), now: end);
+    expect(await employee.closureBlockedReason(a), isNull);
+    await employee.closeAssignment(a, 'Bàn giao hoàn tất', file.path);
+  });
   test('M07 needs checkout/photo, persists closure/photos and closes only after review', () async {
     final a = await assigned();
     final file = File('${f.directory.path}/photo.jpg');
@@ -454,6 +489,16 @@ void main() {
     );
     await ready();
     await employee.recordAttendance(a, 'check_in', evidence(start), now: start);
+    await expectLater(
+      employee.closeAssignment(a, 'Bàn giao', file.path),
+      throwsA(
+        isA<AuthException>().having(
+          (e) => e.message,
+          'message',
+          'Cần điểm danh ra ca trước khi đóng ca.',
+        ),
+      ),
+    );
     await employee.recordAttendance(a, 'check_out', evidence(end), now: end);
     await employee.closeAssignment(a, 'Bàn giao hoàn tất', file.path);
     final closure = (await employee.closures()).single;

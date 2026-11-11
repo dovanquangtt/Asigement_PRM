@@ -300,4 +300,33 @@ void main() {
       expect(await f.db.query('attendance_records'), isEmpty);
     },
   );
+  test('Employee shift table exposes pending events so the manager can approve them', () async {
+    Future<RowData> row() async => ((await manager.employeeShiftTable(
+      employee.session.profile['id'] as int,
+      from: start.subtract(const Duration(days: 1)),
+      to: start.add(const Duration(days: 1)),
+    ))['rows'] as List).single as RowData;
+    final inId = await employee.submitAttendance(
+      assignment, 'check_in', sample(start), now: start);
+    final outId = await employee.submitAttendance(
+      assignment, 'check_out', sample(start.add(const Duration(hours: 8))),
+      now: start.add(const Duration(hours: 8)));
+    var r = await row();
+    expect(r['pending_check_in_id'], inId);
+    expect(r['pending_check_out_id'], outId);
+    expect(r['check_in_at'], isNull);
+    expect(r['sheet_status'], 'PENDING_REVIEW');
+
+    await manager.reviewAttendance(inId, true, note: 'Đã kiểm tra');
+    r = await row();
+    expect(r['pending_check_in_id'], isNull);
+    expect(r['check_in_at'], isNotNull);
+    expect(r['pending_check_out_id'], outId);
+
+    await manager.reviewAttendance(outId, true, note: 'Đúng giờ');
+    r = await row();
+    expect(r['pending_check_out_id'], isNull);
+    expect(r['check_out_at'], isNotNull);
+    expect(r['sheet_status'], 'SUCCESS');
+  });
 }

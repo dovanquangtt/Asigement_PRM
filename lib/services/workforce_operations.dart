@@ -259,7 +259,119 @@ extension WorkforceOperations on WorkforceRepository {
         'note': note,
       });
       await _audit(tx, 'shift.create', 'shifts', id);
+      // Báo cho nhân viên đang làm của chi nhánh biết có ca mới (chưa phải phân công).
+      final branchEmployees = await tx.query(
+        'employees',
+        columns: ['id'],
+        where: "branch_id=? AND status='active' AND user_id IS NOT NULL",
+        whereArgs: [branchId],
+      );
+      final managers = await _reviewers(tx, 'shifts.manage');
+      await _notify(
+        tx,
+        (await _employeeUsers(tx, [
+          for (final e in branchEmployees) e['id'] as int,
+        ])).where((u) => !managers.contains(u)),
+        'Có ca làm mới',
+        'Chi nhánh vừa tạo ca ${_shiftLabel({'starts_at': sqlTime(start), 'ends_at': sqlTime(end)})}. Quản lý sẽ phân công cho bạn nếu phù hợp.',
+        'shifts',
+        id,
+      );
       return id;
+    });
+  }
+
+  /// Sửa giờ, số người cần và ghi chú của ca chưa bắt đầu. Nhân viên đã phân phải còn
+  /// rảnh ở giờ mới và được báo để xác nhận lại.
+  Future<void> updateShift(
+    int shiftId, {
+    required DateTime start,
+    required DateTime end,
+    required int requiredStaff,
+    String note = '',
+  }) async {
+    if (!end.isAfter(start) || requiredStaff < 1) {
+      throw const AuthException(
+        'Giờ kết thúc phải sau giờ bắt đầu; số nhân viên phải lớn hơn 0.',
+      );
+    }
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'shifts.manage');
+      final shift = (await tx.query(
+        'shifts',
+        where: 'id=?',
+        whereArgs: [shiftId],
+      )).firstOrNull;
+      if (shift == null) throw const AuthException('Không tìm thấy ca.');
+      await _requireAttendanceBranch(tx, shift['branch_id'] as int);
+      if (shift['status'] != 'scheduled') {
+        throw const AuthException('Chỉ sửa được ca chưa bắt đầu.');
+      }
+      final assigned = await tx.query(
+        'shift_assignments',
+        where: "shift_id=? AND status<>'cancelled'",
+        whereArgs: [shiftId],
+      );
+      if (assigned.length > requiredStaff) {
+        throw AuthException(
+          'Ca đang có ${assigned.length} nhân viên, không thể giảm số người cần xuống $requiredStaff.',
+        );
+      }
+      if ((await tx.rawQuery(
+        'SELECT 1 FROM attendance_events ev JOIN shift_assignments a ON a.id=ev.assignment_id WHERE a.shift_id=? LIMIT 1',
+        [shiftId],
+      )).isNotEmpty) {
+        throw const AuthException('Không thể sửa ca đã có chấm công.');
+      }
+      final changedTime =
+          sqlTime(start) != shift['starts_at'] || sqlTime(end) != shift['ends_at'];
+      final updated = {
+        ...shift,
+        'starts_at': sqlTime(start),
+        'ends_at': sqlTime(end),
+      };
+      if (changedTime) {
+        for (final a in assigned) {
+          await _available(
+            tx,
+            a['employee_id'] as int,
+            updated,
+            ignoring: [for (final x in assigned) x['id'] as int],
+          );
+        }
+      }
+      await tx.update(
+        'shifts',
+        {
+          'starts_at': sqlTime(start),
+          'ends_at': sqlTime(end),
+          'required_staff': requiredStaff,
+          'note': note,
+        },
+        where: 'id=?',
+        whereArgs: [shiftId],
+      );
+      if (changedTime) {
+        await tx.update(
+          'shift_assignments',
+          {'response_status': 'pending', 'responded_at': null, 'response_note': null},
+          where: "shift_id=? AND status='assigned'",
+          whereArgs: [shiftId],
+        );
+      }
+      await _audit(tx, 'shift.update', 'shifts', shiftId);
+      await _notify(
+        tx,
+        await _employeeUsers(tx, [
+          for (final a in assigned)
+            if (a['status'] == 'assigned') a['employee_id'] as int,
+        ]),
+        'Ca làm đã được cập nhật',
+        'Ca của bạn đổi thành ${_shiftLabel(updated)}.${changedTime ? ' Vui lòng xác nhận lại.' : ''}',
+        'shifts',
+        shiftId,
+      );
     });
   }
 
@@ -436,10 +548,14 @@ extension WorkforceOperations on WorkforceRepository {
         (SELECT status
          FROM shift_closures
          WHERE assignment_id=a.id
-         ORDER BY id DESC LIMIT 1) AS closure_status
+         ORDER BY id DESC LIMIT 1) AS closure_status,
+        r.check_in_at,
+        r.check_out_at,
+        r.attendance_state
       FROM shift_assignments a
       JOIN shifts s ON s.id=a.shift_id
       JOIN branches b ON b.id=s.branch_id
+      LEFT JOIN attendance_records r ON r.assignment_id=a.id
       WHERE a.employee_id=? AND a.status<>'cancelled'
       ORDER BY s.starts_at DESC
       ''',
@@ -494,7 +610,15 @@ extension WorkforceOperations on WorkforceRepository {
       if (minutes <= 0) {
         throw const AuthException('Thời gian nghỉ không hợp lệ.');
       }
-      await tx.insert('leave_requests', {
+      if ((await tx.query(
+        'leave_types',
+        columns: ['id'],
+        where: 'id=?',
+        whereArgs: [leaveTypeId],
+      )).isEmpty) {
+        throw const AuthException('Loại nghỉ phép không hợp lệ.');
+      }
+      final id = await tx.insert('leave_requests', {
         'employee_id': me['id'],
         'leave_type_id': leaveTypeId,
         'starts_at': sqlTime(start),
@@ -503,6 +627,15 @@ extension WorkforceOperations on WorkforceRepository {
         'reason': reason.trim(),
         'status': 'pending',
       });
+      // Báo cho Admin và quản lý chi nhánh để duyệt.
+      await _notify(
+        tx,
+        await _attendanceReviewers(tx, me['branch_id'] as int),
+        'Yêu cầu nghỉ phép mới',
+        '${me['full_name']} xin nghỉ từ ${sqlTime(start)} đến ${sqlTime(end)} (UTC). Lý do: ${reason.trim()}',
+        'leave_requests',
+        id,
+      );
     });
   }
 
@@ -1804,29 +1937,6 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
     );
   }
 
-  Future<void> awardStars(int employeeId, int delta, String reason) async {
-    if (delta == 0 || reason.trim().isEmpty) {
-      throw const AuthException('Nhập số sao khác 0 và lý do.');
-    }
-    final db = await _open();
-    await db.transaction((tx) async {
-      await _require(tx, 'stars.award');
-      if ((await tx.query(
-        'employees',
-        where: 'id=? AND user_id=?',
-        whereArgs: [employeeId, session.userId],
-      )).isNotEmpty) {
-        throw const AuthException('Không thể tự tặng sao.');
-      }
-      await tx.insert('star_events', {
-        'employee_id': employeeId,
-        'stars_delta': delta,
-        'reason': reason.trim(),
-        'awarded_by': session.userId,
-      });
-    });
-  }
-
   Future<List<RowData>> closures() async {
     final db = await _open();
     final managing = await _can(db, 'closures.review');
@@ -1847,6 +1957,47 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
       });
     }
     return result;
+  }
+
+  /// Lý do chưa đóng ca được (giải thích cụ thể cho nhân viên) khi chưa có giờ ra đã ghi công.
+  Future<String> _closureBlocker(DatabaseExecutor db, int assignmentId) async {
+    Future<bool> has(String type, String result) async => (await db.query(
+      'attendance_events',
+      columns: ['id'],
+      where: 'assignment_id=? AND event_type=? AND result=?',
+      whereArgs: [assignmentId, type, result],
+      limit: 1,
+    )).isNotEmpty;
+    final record = (await db.query(
+      'attendance_records',
+      where: 'assignment_id=?',
+      whereArgs: [assignmentId],
+    )).firstOrNull;
+    if (record?['check_in_at'] == null && await has('check_in', 'pending_review')) {
+      return 'Lượt vào ca đang chờ quản lý duyệt. Hãy chờ được duyệt, sau đó điểm danh ra ca.';
+    }
+    if (await has('check_out', 'pending_review')) {
+      return 'Lượt ra ca đang chờ quản lý duyệt. Hãy chờ được duyệt rồi gửi báo cáo đóng ca.';
+    }
+    if (record?['check_in_at'] != null && await has('check_out', 'rejected')) {
+      return 'Lượt ra ca đã bị từ chối. Hãy điểm danh ra ca lại trước khi đóng ca.';
+    }
+    return 'Cần điểm danh ra ca trước khi đóng ca.';
+  }
+
+  /// Null nếu nhân viên được phép gửi báo cáo đóng ca; ngược lại là lý do hiển thị ngay trên màn hình.
+  Future<String?> closureBlockedReason(int assignmentId) async {
+    final db = await _open();
+    await _require(db, 'closures.self');
+    final me = await _me(db);
+    await txOwnAssignment(db, assignmentId, me['id'] as int);
+    final done = await db.query(
+      'attendance_records',
+      columns: ['id'],
+      where: 'assignment_id=? AND check_out_at IS NOT NULL',
+      whereArgs: [assignmentId],
+    );
+    return done.isEmpty ? _closureBlocker(db, assignmentId) : null;
   }
 
   /// Chỉ chủ phân ca đã check-out được gửi ảnh/ghi chú; cho gửi lại khi bị từ chối.
@@ -1889,7 +2040,7 @@ extension WorkforcePayrollAndClosure on WorkforceRepository {
         whereArgs: [assignmentId],
       );
       if (record.isEmpty) {
-        throw const AuthException('Cần điểm danh ra ca trước khi đóng ca.');
+        throw AuthException(await _closureBlocker(tx, assignmentId));
       }
       final previous = await tx.query(
         'shift_closures',

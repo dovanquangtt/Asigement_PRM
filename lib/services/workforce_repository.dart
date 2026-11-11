@@ -16,6 +16,8 @@ part 'attendance_review.dart';
 part 'attendance_management.dart';
 part 'attendance_sheet.dart';
 part 'shift_response.dart';
+part 'leave_management.dart';
+part 'dashboard_summary.dart';
 
 typedef RowData = Map<String, Object?>;
 
@@ -151,8 +153,109 @@ class WorkforceRepository {
     return db.rawQuery(
       'SELECT e.*,b.name AS branch_name,d.name AS department_name '
       'FROM employees e JOIN branches b ON b.id=e.branch_id '
-      'LEFT JOIN departments d ON d.id=e.department_id ORDER BY e.full_name',
+      "LEFT JOIN departments d ON d.id=e.department_id WHERE e.status<>'terminated' ORDER BY e.full_name",
     );
+  }
+
+  /// Sửa mã, họ tên, điện thoại của hồ sơ nhân viên.
+  Future<void> updateEmployee(
+    int employeeId, {
+    required String code,
+    required String name,
+    String phone = '',
+  }) async {
+    if (code.trim().isEmpty || name.trim().isEmpty) {
+      throw const AuthException('Nhập mã và tên nhân viên.');
+    }
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'employees.manage');
+      final rows = await tx.query(
+        'employees',
+        where: 'id=?',
+        whereArgs: [employeeId],
+      );
+      if (rows.isEmpty) throw const AuthException('Không tìm thấy nhân viên.');
+      if ((await tx.query(
+        'employees',
+        where: 'employee_code=? AND id<>?',
+        whereArgs: [code.trim(), employeeId],
+      )).isNotEmpty) {
+        throw const AuthException('Mã nhân viên đã tồn tại.');
+      }
+      await tx.update(
+        'employees',
+        {
+          'employee_code': code.trim(),
+          'full_name': name.trim(),
+          'phone': phone.trim(),
+        },
+        where: 'id=?',
+        whereArgs: [employeeId],
+      );
+    });
+  }
+
+  /// Xóa nhân viên: đánh dấu đã nghỉ việc (giữ lịch sử chấm công/lương), khóa tài khoản
+  /// liên kết và gỡ khỏi các ca chưa bắt đầu.
+  Future<void> deleteEmployee(int employeeId) async {
+    final db = await _open();
+    await db.transaction((tx) async {
+      await _require(tx, 'employees.manage');
+      final employee = (await tx.query(
+        'employees',
+        where: 'id=?',
+        whereArgs: [employeeId],
+      )).firstOrNull;
+      if (employee == null) throw const AuthException('Không tìm thấy nhân viên.');
+      if (employee['status'] == 'terminated') return;
+      final userId = employee['user_id'] as int?;
+      if (userId == session.userId) {
+        throw const AuthException('Không thể xóa hồ sơ của chính bạn.');
+      }
+      if (userId != null &&
+          (await tx.rawQuery(
+            "SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.code='admin'",
+            [userId],
+          )).isNotEmpty) {
+        throw const AuthException('Không thể xóa hồ sơ gắn với tài khoản Admin.');
+      }
+      // Gỡ khỏi các ca chưa bắt đầu và chưa có chấm công.
+      await tx.rawUpdate(
+        "UPDATE shift_assignments SET status='cancelled' WHERE employee_id=? AND status='assigned' "
+        "AND shift_id IN (SELECT id FROM shifts WHERE status='scheduled' AND starts_at>?) "
+        'AND id NOT IN (SELECT assignment_id FROM attendance_events)',
+        [employeeId, sqlTime(DateTime.now())],
+      );
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final hired = '${employee['hire_date']}';
+      await tx.update(
+        'employees',
+        {
+          'status': 'terminated',
+          'termination_date': today.compareTo(hired) < 0 ? hired : today,
+        },
+        where: 'id=?',
+        whereArgs: [employeeId],
+      );
+      if (userId != null) {
+        await tx.update(
+          'users',
+          {'is_active': 0},
+          where: 'id=?',
+          whereArgs: [userId],
+        );
+      }
+      await tx.insert('audit_logs', {
+        'actor_user_id': session.userId,
+        'action': 'employee.delete',
+        'entity_type': 'employees',
+        'entity_id': employeeId,
+        'after_json': '{}',
+      });
+    });
   }
 
   Future<List<RowData>> shifts() async {

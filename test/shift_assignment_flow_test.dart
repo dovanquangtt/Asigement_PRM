@@ -217,6 +217,9 @@ void main() {
       );
       expect((table['rows'] as List).length, 2);
       expect((table['summary'] as RowData)['pending'], 2);
+      final first = (table['rows'] as List).first as RowData;
+      expect(first['pending_check_in_id'], isNull);
+      expect(first['sheet_status'], 'NOT_STARTED');
       expect(
         (await manager.shiftTableEmployees()).any((e) => e['id'] == employeeId),
         isTrue,

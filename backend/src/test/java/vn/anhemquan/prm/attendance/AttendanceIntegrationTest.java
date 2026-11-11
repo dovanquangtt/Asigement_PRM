@@ -1,6 +1,8 @@
 package vn.anhemquan.prm.attendance;
 
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.service.AttendanceClock;
+
+import vn.anhemquan.prm.repository.Db;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -361,7 +363,7 @@ class AttendanceIntegrationTest extends AbstractIntegrationTest {
                 Map.of("approve", true, "note", "Đã đối chiếu")).andExpect(status().isOk());
         Map<String, Object> r = record(a);
         assertEquals("adjusted", r.get("status"));
-        assertEquals(in, ((Timestamp) r.get("check_in_at")).toInstant());
+        assertEquals(in, vn.anhemquan.prm.util.AppTime.toInstant(r.get("check_in_at")));
         assertEquals(106, ((Number) r.get("worked_minutes")).intValue());
         assertEquals(1, unreadNotifications(w.employeeUser, "Kết quả điều chỉnh công"));
         send(managerToken, "/api/attendance/adjustments/" + request + "/review",

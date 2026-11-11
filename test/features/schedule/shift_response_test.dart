@@ -163,6 +163,64 @@ void main() {
     expect(r.calls.where((c) => c.contains('/employees/5/shifts')).length, 2);
   });
 
+  testWidgets('Shift table lets the manager approve or reject pending check-in/out', (tester) async {
+    var loads = 0;
+    final r = Recorder((req) async {
+      if (req.url.path.endsWith('/employees')) {
+        return json([{'id': 5, 'full_name': 'An', 'employee_code': 'E5', 'branch_name': 'Chi nhánh 1'}]);
+      }
+      if (req.url.path.contains('/submissions/')) return json({});
+      loads++;
+      return json({
+        'employee': {'id': 5},
+        'summary': {'total': 1, 'pending': 0, 'accepted': 1, 'rejected': 0},
+        'rows': [
+          {
+            ...row(1, 'accepted'),
+            'pending_check_in_id': 11,
+            'pending_check_in_at': '2026-11-03T01:02:00Z',
+            'pending_check_out_id': 12,
+            'pending_check_out_at': '2026-11-03T09:01:00Z',
+            'sheet_status': 'PENDING_REVIEW',
+          },
+        ],
+      });
+    });
+    await tester.binding.setSurfaceSize(const Size(400, 900)); // phone width: no horizontal scrolling needed
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(home: EmployeeShiftTableScreen(client: r.client)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('(chờ duyệt)'), findsNWidgets(2));
+    // Check-out cannot be approved before the check-in is.
+    expect(tester.widget<FilledButton>(find.byKey(const Key('approve-12'))).onPressed, isNull);
+
+    expect(tester.widget<FilledButton>(find.byKey(const Key('approve-11'))).onPressed, isNotNull);
+    await tester.ensureVisible(find.byKey(const Key('approve-11')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('approve-11')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('review-confirm')));
+    await tester.pumpAndSettle();
+    final approve = r.calls.indexOf('POST /api/attendance/submissions/11/review');
+    expect(approve, isNonNegative);
+    expect(jsonDecode(r.bodies[approve]), {'approve': true, 'note': ''});
+    expect(loads, 2); // table reloaded after the decision
+
+    // Rejecting needs a reason: an empty note keeps the dialog open.
+    await tester.ensureVisible(find.byKey(const Key('reject-12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reject-12')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('review-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('review-note')), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('review-note')), 'Sai giờ');
+    await tester.tap(find.byKey(const Key('review-confirm')));
+    await tester.pumpAndSettle();
+    final reject = r.calls.indexOf('POST /api/attendance/submissions/12/review');
+    expect(jsonDecode(r.bodies[reject]), {'approve': false, 'note': 'Sai giờ'});
+  });
+
   testWidgets('Shift table shows a clear message on 403', (tester) async {
     final r = Recorder((_) async => json({'code': 'FORBIDDEN', 'message': 'Tài khoản không có quyền thực hiện thao tác này.'}, 403));
     await tester.pumpWidget(MaterialApp(home: EmployeeShiftTableScreen(client: r.client)));

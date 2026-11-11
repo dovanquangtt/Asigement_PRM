@@ -1,6 +1,6 @@
 package vn.anhemquan.prm.payroll;
 
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -300,22 +300,16 @@ class PayrollIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void starsCannotBeSelfAwardedAndEmployeesSeeOnlyTheirOwn() throws Exception {
+    void starsAreReadOnlyAndEmployeesSeeOnlyTheirOwn() throws Exception {
         long managerUser = createUser("mgr" + sfx, PASSWORD, "manager", null);
         long managerEmp = employee(managerUser, "M" + sfx, "Quan Ly");
+        // Awarding stars was removed from the API: existing events are only listed.
+        jdbc.update("INSERT INTO star_events (employee_id, stars_delta, reason, awarded_by) VALUES (?, 3, 'Tot', ?)",
+                empId, managerUser);
         String managerToken = login("mgr" + sfx, PASSWORD);
 
-        call(post("/api/stars"), managerToken, Map.of("employeeId", managerEmp, "delta", 1, "reason", "x"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Không thể tự tặng sao."));
-        call(post("/api/stars"), managerToken, Map.of("employeeId", empId, "delta", 0, "reason", "x"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Nhập số sao khác 0 và lý do."));
-        call(post("/api/stars"), managerToken, Map.of("employeeId", empId, "delta", 3, "reason", "Tot"))
-                .andExpect(status().isCreated());
-        call(post("/api/stars"), empToken, Map.of("employeeId", otherEmpId, "delta", 1, "reason", "x"))
-                .andExpect(status().isForbidden());
-
+        call(post("/api/stars"), managerToken, Map.of("employeeId", empId, "delta", 1, "reason", "x"))
+                .andExpect(status().is4xxClientError());
         call(get("/api/stars"), empToken, null)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))

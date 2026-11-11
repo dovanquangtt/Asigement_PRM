@@ -21,8 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
-import vn.anhemquan.prm.attendance.AttendanceClock;
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.service.AttendanceClock;
+import vn.anhemquan.prm.repository.Db;
 import vn.anhemquan.prm.support.AbstractIntegrationTest;
 
 /**

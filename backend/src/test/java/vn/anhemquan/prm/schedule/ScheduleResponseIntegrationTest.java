@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import vn.anhemquan.prm.common.Db;
+import vn.anhemquan.prm.repository.Db;
 import vn.anhemquan.prm.support.AbstractIntegrationTest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -203,7 +203,13 @@ class ScheduleResponseIntegrationTest extends AbstractIntegrationTest {
         long rejected = createShift(future(4), 1);
         long removed = createShift(future(5), 1);
         respondAfterAssign(accepted, true, null);
-        assign(pending, emp1);
+        long pendingAssignment = assign(pending, emp1);
+        jdbc.update("INSERT INTO attendance_events (assignment_id, event_type, occurred_at, device_valid, gps_valid, "
+                + "wifi_valid, result) VALUES (?, 'check_in', ?, FALSE, FALSE, FALSE, 'pending_review')",
+                pendingAssignment,
+                java.sql.Timestamp.from(future(3).toInstant()));
+        long pendingEvent = jdbc.queryForObject("SELECT MAX(id) FROM attendance_events WHERE assignment_id = ?",
+                Long.class, pendingAssignment);
         respondAfterAssign(rejected, false, "Không rảnh");
         assign(removed, emp1);
         send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -227,6 +233,10 @@ class ScheduleResponseIntegrationTest extends AbstractIntegrationTest {
         assertFalse(shiftIds.contains(removed));
         assertTrue(json.readTree(res).get("rows").get(2).get("sheet_status").isNull());
         assertEquals("NOT_STARTED", json.readTree(res).get("rows").get(0).get("sheet_status").asText());
+        // The manager can review the employee's pending punch straight from the table.
+        assertEquals(pendingEvent, json.readTree(res).get("rows").get(1).get("pending_check_in_id").asLong());
+        assertTrue(json.readTree(res).get("rows").get(1).get("pending_check_out_id").isNull());
+        assertTrue(json.readTree(res).get("rows").get(0).get("pending_check_in_id").isNull());
 
         send(get("/api/schedule/employees/" + emp1 + "/shifts"), otherManagerToken, null)
                 .andExpect(status().isForbidden())

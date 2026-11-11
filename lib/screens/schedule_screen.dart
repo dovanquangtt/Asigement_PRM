@@ -4,21 +4,13 @@ import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/shift_day_dialog.dart';
 import 'operations_screen.dart';
-import '../state/workspace_controller.dart';
-import '../services/workspace_actions.dart';
 
 class ScheduleScreen extends StatefulWidget {
-  const ScheduleScreen({
-    super.key,
-    required this.repository,
-    this.controller,
-    this.actions,
-  });
+  const ScheduleScreen({super.key, required this.repository});
 
   final WorkforceRepository repository;
-  final WorkspaceController? controller;
-  final WorkspaceActions? actions;
 
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();
@@ -43,8 +35,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
+  List<RowData> _allShifts = const [];
+  List<RowData> _balances = const [];
+
+  /// 1 ngày phép = 480 phút.
+  String _days(int minutes) =>
+      (minutes / 480).toStringAsFixed(minutes % 480 == 0 ? 0 : 1);
+
   Future<(List<RowData>, List<RowData>)> _fetchData() async {
     final shifts = await r.employeeSchedule();
+    _allShifts = shifts;
+    try {
+      _balances = await r.leaveBalances();
+    } catch (_) {
+      _balances = const []; // tài khoản chưa có hồ sơ nhân viên: không có số dư
+    }
     final leaves = await r.employeeLeaveRequests();
     return (shifts, leaves);
   }
@@ -557,7 +562,26 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   const SizedBox(height: 16),
                 ],
 
-              // 3. Phần yêu cầu xin nghỉ phép
+              // 3. Số ngày phép còn lại và yêu cầu xin nghỉ phép
+              section('Số ngày phép của bạn'),
+              if (_balances.isEmpty)
+                panel(
+                  child: const Text('Chưa có số ngày phép được cấp.'),
+                )
+              else
+                panel(
+                  child: Column(
+                    key: const Key('leave-balances'),
+                    children: [
+                      for (final b in _balances)
+                        money(
+                          '${b['name']}${b['is_paid'] == 1 ? '' : ' (không lương)'}',
+                          'còn ${_days(b['remaining_minutes'] as int)} / ${_days(b['granted_minutes'] as int)} ngày',
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
               section('Yêu cầu xin nghỉ phép của bạn'),
               if (leaves.isEmpty)
                 panel(
@@ -858,7 +882,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     final shiftStatus = shift['shift_status']?.toString() ?? 'scheduled';
     final assignmentId = shift['assignment_id'] as int;
-    final shiftId = shift['shift_id'] as int;
     final coworkersStr = shift['coworkers']?.toString() ?? '';
     final lastAttendance = shift['last_attendance_event']?.toString();
     final closureStatus = shift['closure_status']?.toString();
@@ -945,13 +968,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       // Giờ làm việc & Khung thời lượng
                       Row(
                         children: [
-                          Text(
-                            '${startVn.hour.toString().padLeft(2, '0')}:${startVn.minute.toString().padLeft(2, '0')} — ${endVn.hour.toString().padLeft(2, '0')}:${endVn.minute.toString().padLeft(2, '0')}',
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              color: ink,
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '${startVn.hour.toString().padLeft(2, '0')}:${startVn.minute.toString().padLeft(2, '0')} — ${endVn.hour.toString().padLeft(2, '0')}:${endVn.minute.toString().padLeft(2, '0')}',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                  color: ink,
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -1203,29 +1232,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           ),
                           const SizedBox(width: 8),
 
-                          // Nút Xem chi tiết ca
-                          InkWell(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute<void>(
-                                builder: (_) => ShiftPage(
-                                  repository: r,
-                                  shiftId: shiftId,
-                                  assignmentId: assignmentId,
-                                ),
+                          // Nút xem thông tin chi tiết: mở bảng toàn bộ ca trong ngày
+                          OutlinedButton.icon(
+                            key: Key('shift-info-$assignmentId'),
+                            onPressed: () => _showDayInfo(shift),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
                               ),
-                            ).then((_) => _reload()),
-                            borderRadius: BorderRadius.circular(14),
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF0F5EA),
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: const Icon(
-                                Icons.arrow_forward_ios_rounded,
-                                size: 16,
-                                color: green,
+                            ),
+                            icon: const Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                            ),
+                            label: const Text(
+                              'Xem thông tin',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -1240,6 +1268,120 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
       ),
     );
+  }
+
+  static const _slotColors = [
+    Color(0xFFE67E22),
+    Color(0xFF2F6FDE),
+    Color(0xFF27AE60),
+    Color(0xFF8E44AD),
+  ];
+
+  String _hhmm(Object? utc) {
+    if (utc == null) return 'Chưa có';
+    final d = utcTime(utc).toLocal();
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Bảng thông tin chi tiết toàn bộ ca của ngày chứa [tapped], theo từng thẻ ca.
+  void _showDayInfo(RowData tapped) {
+    final day = utcTime(tapped['starts_at']).toLocal();
+    bool sameDay(DateTime d) =>
+        d.year == day.year && d.month == day.month && d.day == day.day;
+    final dayShifts = [
+      for (final s in _allShifts)
+        if (sameDay(utcTime(s['starts_at']).toLocal())) s,
+    ]..sort((a, b) => '${a['starts_at']}'.compareTo('${b['starts_at']}'));
+    final items = <ShiftDayItem>[];
+    for (var i = 0; i < dayShifts.length; i++) {
+      final s = dayShifts[i];
+      final start = utcTime(s['starts_at']).toLocal();
+      final end = utcTime(s['ends_at']).toLocal();
+      final mins = end.difference(start).inMinutes;
+      final hours = (mins / 60).toStringAsFixed(mins % 60 == 0 ? 0 : 1);
+      final responseText = switch ('${s['response_status']}') {
+        'accepted' => 'Đã chấp nhận',
+        'rejected' => 'Đã từ chối',
+        _ => 'Chờ xác nhận',
+      };
+      final note = '${s['shift_note'] ?? ''}'.trim();
+      final reason = '${s['response_note'] ?? ''}'.trim();
+      final coworkers = '${s['coworkers'] ?? ''}'.trim();
+      final hasIn = s['check_in_at'] != null;
+      final hasOut = s['check_out_at'] != null;
+      final ended = utcTime(s['ends_at']).isBefore(DateTime.now().toUtc());
+      final (attLabel, attBg, attFg) = hasIn && hasOut
+          ? ('HOÀN TẤT', const Color(0xFFE8F8F5), const Color(0xFF27AE60))
+          : hasIn
+          ? ('ĐANG LÀM', const Color(0xFFFEF5E7), const Color(0xFFE67E22))
+          : ended
+          ? ('THIẾU ĐIỂM DANH', const Color(0xFFFDEDEC), const Color(0xFFC0392B))
+          : ('CHƯA ĐIỂM DANH', const Color(0xFFE5E8E8), const Color(0xFF5F6B6B));
+      final closure = s['closure_status']?.toString();
+      final shiftId = s['shift_id'] as int;
+      final assignmentId = s['assignment_id'] as int;
+      items.add(
+        ShiftDayItem(
+          slot: 'Ca ${i + 1}',
+          color: _slotColors[i % _slotColors.length],
+          start: start,
+          end: end,
+          branch: '${s['branch_name']}',
+          code: 'Mã ca #$shiftId',
+          title: _shiftTitle(start),
+          highlighted: assignmentId == tapped['assignment_id'],
+          lines: [
+            MapEntry('Thời lượng', '$hours tiếng'),
+            MapEntry(
+              'Phản hồi',
+              reason.isEmpty ? responseText : '$responseText ($reason)',
+            ),
+            MapEntry(
+              'Số người',
+              '${s['total_assigned'] ?? 0}/${s['required_staff'] ?? 1}',
+            ),
+            MapEntry('Cùng ca', coworkers.isEmpty ? 'Chưa có' : coworkers),
+            MapEntry('Giờ vào', _hhmm(s['check_in_at'])),
+            MapEntry('Giờ ra', _hhmm(s['check_out_at'])),
+            if (note.isNotEmpty) MapEntry('Ghi chú', note),
+          ],
+          chips: [
+            ShiftChip(attLabel, attBg, attFg),
+            if (closure == 'submitted')
+              const ShiftChip(
+                'ĐÃ GỬI ĐÓNG CA',
+                Color(0xFFEBF5FB),
+                Color(0xFF2980B9),
+              )
+            else if (closure == 'approved')
+              const ShiftChip(
+                'ĐÓNG CA ĐÃ DUYỆT',
+                Color(0xFFE8F8F5),
+                Color(0xFF27AE60),
+              ),
+            ShiftChip(
+              'Xem chi tiết',
+              const Color(0xFF1DBF8B),
+              Colors.white,
+              onTap: () {
+                Navigator.of(context).pop();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => ShiftPage(
+                      repository: r,
+                      shiftId: shiftId,
+                      assignmentId: assignmentId,
+                    ),
+                  ),
+                ).then((_) => _reload());
+              },
+            ),
+          ],
+        ),
+      );
+    }
+    showShiftDayDialog(context, day: day, items: items);
   }
 
   Widget _buildShiftBadge({
