@@ -361,6 +361,69 @@ class _WorkspaceState extends State<Workspace> {
     }
   }
 
+  Future<void> toggleActive(RowData account) async {
+    final unlock = account['is_active'] != 1;
+    final name = '${account['username']}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(unlock ? 'Mở khóa $name?' : 'Khóa $name?'),
+        content: Text(
+          unlock
+              ? 'Tài khoản sẽ đăng nhập được lại. Nếu hồ sơ nhân viên của tài khoản đã bị xóa (nghỉ việc), hồ sơ cũng được khôi phục.'
+              : 'Tài khoản sẽ không đăng nhập được cho tới khi mở khóa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Không'),
+          ),
+          FilledButton(
+            key: const Key('toggle-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(unlock ? 'Mở khóa' : 'Khóa'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await repository.setUserActive(account['id'] as int, unlock);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(unlock ? 'Đã mở khóa $name.' : 'Đã khóa $name.'),
+        ),
+      );
+      await refresh();
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
+  }
+
+  Future<void> resetPassword(RowData account) async {
+    final done = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ResetPasswordDialog(
+        repository: repository,
+        userId: account['id'] as int,
+        username: '${account['username']}',
+      ),
+    );
+    if (done == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Đã đặt lại mật khẩu cho ${account['username']}. Hãy báo mật khẩu mới cho người dùng.',
+          ),
+        ),
+      );
+    }
+  }
+
   /// Tài khoản cũ chưa có hồ sơ: chọn một hồ sơ nhân viên chưa có tài khoản để liên kết.
   Future<void> linkProfile(RowData account) async {
     final candidates = await repository.employeesWithoutAccount();
@@ -653,15 +716,37 @@ class _WorkspaceState extends State<Workspace> {
                 '${value(row, 'roles')} • ${row['is_active'] == 1 ? 'Hoạt động' : 'Đã khóa'}'
                 '\n${row['employee_id'] != null ? 'Hồ sơ: ${row['employee_name']}' : (value(row, 'roles').contains('Admin') ? 'Tài khoản quản trị' : 'Chưa có hồ sơ nhân viên')}',
               ),
-              trailing:
-                  row['employee_id'] == null &&
-                      !value(row, 'roles').contains('Admin')
-                  ? TextButton(
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (row['employee_id'] == null &&
+                      !value(row, 'roles').contains('Admin'))
+                    TextButton(
                       key: Key('link-profile-${row['id']}'),
                       onPressed: () => linkProfile(row),
                       child: const Text('Liên kết hồ sơ'),
-                    )
-                  : null,
+                    ),
+                  IconButton(
+                    key: Key('toggle-active-${row['id']}'),
+                    tooltip: row['is_active'] == 1
+                        ? 'Khóa tài khoản'
+                        : 'Mở khóa tài khoản',
+                    icon: Icon(
+                      row['is_active'] == 1
+                          ? Icons.lock_open_outlined
+                          : Icons.lock_outline,
+                      color: row['is_active'] == 1 ? null : Colors.red.shade700,
+                    ),
+                    onPressed: () => toggleActive(row),
+                  ),
+                  IconButton(
+                    key: Key('reset-password-${row['id']}'),
+                    tooltip: 'Đặt lại mật khẩu',
+                    icon: const Icon(Icons.lock_reset),
+                    onPressed: () => resetPassword(row),
+                  ),
+                ],
+              ),
             ),
             'employees' => ListTile(
               onTap: () => employeeContract(row),
@@ -1112,6 +1197,127 @@ class _CreateDialogState extends State<_CreateDialog> {
               ? null
               : save,
           child: Text(busy ? 'Đang lưu…' : 'Lưu'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Hộp thoại đặt lại mật khẩu: nhập hai lần, hiện/ẩn, kiểm tra độ dài và khớp trước khi lưu.
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog({
+    required this.repository,
+    required this.userId,
+    required this.username,
+  });
+  final WorkforceRepository repository;
+  final int userId;
+  final String username;
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  final form = GlobalKey<FormState>();
+  final password = TextEditingController();
+  final confirm = TextEditingController();
+  bool hidden = true;
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    password.dispose();
+    confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (busy || !form.currentState!.validate()) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.repository.resetPassword(widget.userId, password.text);
+      if (mounted) Navigator.pop(context, true);
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => error = 'Không đặt lại được mật khẩu.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !busy,
+    child: AlertDialog(
+      title: Text('Đặt lại mật khẩu: ${widget.username}'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: form,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                key: const Key('reset-password'),
+                controller: password,
+                enabled: !busy,
+                obscureText: hidden,
+                decoration: InputDecoration(
+                  labelText: 'Mật khẩu mới (ít nhất 8 ký tự)',
+                  suffixIcon: IconButton(
+                    tooltip: hidden ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                    icon: Icon(
+                      hidden
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                    onPressed: () => setState(() => hidden = !hidden),
+                  ),
+                ),
+                validator: (v) => v == null || v.length < 8
+                    ? 'Mật khẩu cần ít nhất 8 ký tự'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const Key('reset-confirm'),
+                controller: confirm,
+                enabled: !busy,
+                obscureText: hidden,
+                decoration: const InputDecoration(
+                  labelText: 'Nhập lại mật khẩu mới',
+                ),
+                validator: (v) =>
+                    v != password.text ? 'Hai mật khẩu chưa khớp' : null,
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          key: const Key('reset-save'),
+          onPressed: busy ? null : save,
+          child: Text(busy ? 'Đang lưu…' : 'Đặt lại'),
         ),
       ],
     ),

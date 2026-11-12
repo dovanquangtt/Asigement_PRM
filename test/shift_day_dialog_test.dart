@@ -189,6 +189,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Phản hồi: Chờ xác nhận'), findsNWidgets(2));
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
     },
   );
 }

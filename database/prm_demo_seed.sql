@@ -333,27 +333,7 @@ INSERT INTO "star_events" ("id","employee_id","assignment_id","stars_delta","rea
 INSERT INTO "star_events" ("id","employee_id","assignment_id","stars_delta","reason","awarded_by","created_at") VALUES (3,2,NULL,5,'[DEMO] Điều phối ca tốt',1,'2026-10-16 06:59:33');
 INSERT INTO "star_events" ("id","employee_id","assignment_id","stars_delta","reason","awarded_by","created_at") VALUES (4,1,NULL,2,'[DEMO] Hỗ trợ đội ngũ',2,'2026-10-16 06:59:33');
 
--- shift_closures: 9 rows
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (1,1,1,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-09 09:05:00','approved',2,'2026-10-09 09:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (2,2,2,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-09 09:05:00','approved',1,'2026-10-09 09:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (3,3,3,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-09 09:05:00','approved',1,'2026-10-09 09:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (4,4,1,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-11 09:05:00','approved',2,'2026-10-11 09:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (5,5,2,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-11 09:05:00','approved',1,'2026-10-11 09:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (6,6,3,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-11 10:05:00','approved',1,'2026-10-11 10:10:00',NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (7,8,2,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-15 09:05:00','submitted',NULL,NULL,NULL);
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (8,9,3,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-15 14:05:00','rejected',1,'2026-10-15 14:10:00','[DEMO] Cần bổ sung ghi chú và chụp ảnh bàn giao rõ hơn.');
-INSERT INTO "shift_closures" ("id","assignment_id","submitted_by","note","submitted_at","status","reviewed_by","reviewed_at","review_note") VALUES (9,10,3,'[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.','2026-10-15 16:05:00','submitted',NULL,NULL,NULL);
 
--- shift_closure_photos: 9 rows
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (1,1,'asset:database/demo_assets/closure_sample.png','2026-10-09 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (2,2,'asset:database/demo_assets/closure_sample.png','2026-10-09 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (3,3,'asset:database/demo_assets/closure_sample.png','2026-10-09 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (4,4,'asset:database/demo_assets/closure_sample.png','2026-10-11 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (5,5,'asset:database/demo_assets/closure_sample.png','2026-10-11 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (6,6,'asset:database/demo_assets/closure_sample.png','2026-10-11 10:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (7,7,'asset:database/demo_assets/closure_sample.png','2026-10-15 09:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (8,8,'asset:database/demo_assets/closure_sample.png','2026-10-15 14:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
-INSERT INTO "shift_closure_photos" ("id","closure_id","file_url","captured_at","caption") VALUES (9,9,'asset:database/demo_assets/closure_sample.png','2026-10-15 16:05:00','Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.');
 
 -- notifications: 3 rows
 INSERT INTO "notifications" ("id","title","body","notification_type","created_by","created_at","related_entity","related_id") VALUES (1,'Lịch ca DEMO đã sẵn sàng','[DEMO] Mở lịch ca để thử điểm danh, đổi ca và đóng ca.','schedule',1,'2026-10-16 06:59:33',NULL,NULL);

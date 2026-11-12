@@ -291,6 +291,7 @@ void main() {
             await f.auth.signIn('employee', 'Employee@12345'),
             openDatabase: () async => f.db,
           );
+          await f.addClosure();
           final row = (await employee.closures()).firstWhere(
             (r) => r['status'] == 'submitted',
           );

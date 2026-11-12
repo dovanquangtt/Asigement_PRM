@@ -22,6 +22,7 @@ part 'shift_swap.dart';
 part 'payroll_self.dart';
 part 'payroll_manage.dart';
 part 'employee_accounts.dart';
+part 'shift_open.dart';
 
 typedef RowData = Map<String, Object?>;
 

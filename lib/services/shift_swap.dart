@@ -128,7 +128,15 @@ extension ShiftSwap on WorkforceRepository {
       final options = blocker == null
           ? (await swapOptions(a['id'] as int)).length
           : 0;
-      result.add({...a, 'blocker': blocker, 'options_count': options});
+      final open = blocker == null
+          ? (await openSwapTargets(a['id'] as int)).length
+          : 0;
+      result.add({
+        ...a,
+        'blocker': blocker,
+        'options_count': options,
+        'open_count': open,
+      });
     }
     return result;
   }

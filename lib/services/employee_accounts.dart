@@ -85,4 +85,68 @@ extension EmployeeAccounts on WorkforceRepository {
       return userId;
     });
   }
+
+  /// Khóa hoặc mở khóa một tài khoản (tài khoản bị khóa không đăng nhập được). Admin không tự khóa mình.
+  /// Mở khóa tài khoản có hồ sơ đã nghỉ việc thì khôi phục luôn hồ sơ về "đang làm" để dùng được ngay.
+  Future<void> setUserActive(int userId, bool active) async {
+    final db = await _open();
+    await _require(db, 'users.manage');
+    await db.transaction((tx) async {
+      await _require(tx, 'users.manage');
+      final user = (await tx.query(
+        'users',
+        columns: ['id', 'username'],
+        where: 'id=?',
+        whereArgs: [userId],
+      )).firstOrNull;
+      if (user == null) throw const AuthException('Không tìm thấy tài khoản.');
+      if (!active && userId == session.userId) {
+        throw const AuthException('Bạn không thể tự khóa tài khoản của mình.');
+      }
+      await tx.update(
+        'users',
+        {'is_active': active ? 1 : 0},
+        where: 'id=?',
+        whereArgs: [userId],
+      );
+      if (active) {
+        await tx.update(
+          'employees',
+          {'status': 'active', 'termination_date': null},
+          where: "user_id=? AND status<>'active'",
+          whereArgs: [userId],
+        );
+      }
+      await _audit(tx, active ? 'user.unlock' : 'user.lock', 'users', userId, {
+        'username': user['username'],
+      });
+    });
+  }
+
+  /// Admin đặt lại mật khẩu cho một tài khoản (mật khẩu cũ không xem được vì chỉ lưu dạng băm).
+  /// Mật khẩu mới phải từ 8 ký tự; chỉ Admin có quyền, và việc đặt lại được ghi nhật ký.
+  Future<void> resetPassword(int userId, String newPassword) async {
+    final db = await _open();
+    await _require(db, 'users.manage');
+    final hash = await AuthService.hashPassword(newPassword);
+    await db.transaction((tx) async {
+      await _require(tx, 'users.manage');
+      final user = (await tx.query(
+        'users',
+        columns: ['id', 'username'],
+        where: 'id=?',
+        whereArgs: [userId],
+      )).firstOrNull;
+      if (user == null) throw const AuthException('Không tìm thấy tài khoản.');
+      await tx.update(
+        'users',
+        {'password_hash': hash},
+        where: 'id=?',
+        whereArgs: [userId],
+      );
+      await _audit(tx, 'user.reset_password', 'users', userId, {
+        'username': user['username'],
+      });
+    });
+  }
 }

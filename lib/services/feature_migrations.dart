@@ -94,7 +94,7 @@ Future<void> migrateFeatures(Database db) async {
         'Chưa phân công nhân viên')
       WHERE note LIKE '[DEMO %] Dữ liệu mẫu để thử chức năng;%'
     """);
-    if (version >= 8) return;
+    if (version >= 9) return;
     if (version < 3) {
       // v3: duyệt thiết bị, liên kết Google và lưu kết quả kiểm tra lương.
       await tx.execute(
@@ -212,6 +212,15 @@ Future<void> migrateFeatures(Database db) async {
         "INSERT INTO payroll_dispute_items (dispute_id,item_key) SELECT id,'allowance' FROM payroll_disputes WHERE message LIKE '[DEMO]%'",
       );
     }
-    await tx.execute('PRAGMA user_version=8');
+    if (version < 9) {
+      // v9: bỏ ảnh minh họa DEMO ở báo cáo đóng ca và các báo cáo DEMO không còn ảnh thật.
+      await tx.execute(
+        "DELETE FROM shift_closure_photos WHERE file_url LIKE 'asset:%'",
+      );
+      await tx.execute(
+        "DELETE FROM shift_closures WHERE note LIKE '[DEMO]%' AND id NOT IN (SELECT closure_id FROM shift_closure_photos)",
+      );
+    }
+    await tx.execute('PRAGMA user_version=9');
   });
 }

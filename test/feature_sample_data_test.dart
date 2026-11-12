@@ -1,13 +1,9 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quanlinhansunhahang/services/feature_sample_data.dart';
 import 'package:quanlinhansunhahang/services/workforce_repository.dart';
 import 'package:quanlinhansunhahang/services/auth_service.dart';
-import 'package:quanlinhansunhahang/screens/operations_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:quanlinhansunhahang/services/feature_migrations.dart';
 
@@ -123,6 +119,11 @@ void main() {
               (await f.db.rawQuery('SELECT COUNT(*) n FROM "$name"'))
                       .single['n']
                   as int;
+          // Báo cáo đóng ca chỉ có dữ liệu thật do nhân viên gửi, không có ảnh/báo cáo DEMO.
+          if (['shift_closures', 'shift_closure_photos'].contains(name)) {
+            expect(count, 0, reason: 'Không còn báo cáo đóng ca DEMO');
+            continue;
+          }
           expect(
             count,
             greaterThan(0),
@@ -313,34 +314,5 @@ void main() {
       await db.close();
       await folder.delete(recursive: true);
     }
-  });
-  test('Demo photo is a valid portable asset', () async {
-    final bytes = await rootBundle.load(closureSampleAsset);
-    final codec = await ui.instantiateImageCodec(
-      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-    );
-    final frame = await codec.getNextFrame();
-    expect(frame.image.width, 384);
-    expect(frame.image.height, 216);
-    frame.image.dispose();
-    codec.dispose();
-  });
-  testWidgets('Closure photo preview renders asset instead of machine path', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: closurePhotoPreview({
-            'file_url': 'asset:$closureSampleAsset',
-            'caption': 'Ảnh minh họa DEMO',
-          }),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(Image), findsOneWidget);
-    expect(find.text('Ảnh minh họa DEMO'), findsOneWidget);
-    expect(tester.takeException(), isNull);
   });
 }

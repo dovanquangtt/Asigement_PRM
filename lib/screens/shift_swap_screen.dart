@@ -438,8 +438,8 @@ class _ShiftSwapScreenState extends State<ShiftSwapScreen>
       final blocker = mine['blocker'] as String?;
       if (blocker != null) {
         _snack('Ca này chưa đổi được: $blocker');
-      } else if (mine['options_count'] == 0) {
-        _snack('Chưa có ca của đồng nghiệp nào phù hợp để đổi với ca này.');
+      } else if (mine['options_count'] == 0 && mine['open_count'] == 0) {
+        _snack('Chưa có ca nào phù hợp để đổi với ca này.');
       } else {
         await _pick(mine);
       }
@@ -487,15 +487,17 @@ class _ShiftSwapScreenState extends State<ShiftSwapScreen>
   /// Bước 2: chọn ca của đồng nghiệp muốn đổi (xếp theo ngày từ bé đến lớn), rồi xác nhận + lý do.
   Future<void> _pick(RowData mine) async {
     final List<RowData> options;
+    final List<RowData> openTargets;
     try {
       options = await r.swapOptions(mine['id'] as int);
+      openTargets = await r.openSwapTargets(mine['id'] as int);
     } on AuthException catch (e) {
       _snack(e.message);
       return;
     }
     if (!mounted) return;
-    if (options.isEmpty) {
-      _snack('Chưa có ca của đồng nghiệp nào phù hợp để đổi với ca này.');
+    if (options.isEmpty && openTargets.isEmpty) {
+      _snack('Chưa có ca nào phù hợp để đổi với ca này.');
       return;
     }
     final target = await showModalBottomSheet<RowData>(
@@ -526,6 +528,39 @@ class _ShiftSwapScreenState extends State<ShiftSwapScreen>
               style: TextStyle(fontSize: 12, color: muted),
             ),
             const SizedBox(height: 8),
+            if (openTargets.isNotEmpty) ...[
+              const Text(
+                'Ca còn trống (đổi ngay, không cần đồng nghiệp đồng ý)',
+                style: TextStyle(fontWeight: FontWeight.w800, color: green),
+              ),
+              for (final o in openTargets)
+                Card(
+                  key: Key('swap-open-${o['id']}'),
+                  elevation: 0,
+                  margin: const EdgeInsets.only(top: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFFD5E7E4)),
+                  ),
+                  child: ListTile(
+                    title: Text(
+                      shiftText(o['starts_at'], o['ends_at']),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text(
+                      '${o['branch_name']} • ${o['assigned_count']}/${o['required_staff']} người',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(c, {...o, 'is_open': true}),
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ],
+            if (options.isNotEmpty)
+              const Text(
+                'Ca của đồng nghiệp (cần đồng nghiệp đồng ý, rồi quản lý duyệt)',
+                style: TextStyle(fontWeight: FontWeight.w800, color: green),
+              ),
             for (final o in options)
               Card(
                 key: Key('swap-option-${o['id']}'),
@@ -550,6 +585,20 @@ class _ShiftSwapScreenState extends State<ShiftSwapScreen>
       ),
     );
     if (target == null || !mounted) return;
+    if (target['is_open'] == true) {
+      final ok = await _confirm(
+        'Đổi sang ca còn trống?',
+        'Bạn sẽ bỏ ca ${shiftText(mine['starts_at'], mine['ends_at'])} và nhận ca '
+            '${shiftText(target['starts_at'], target['ends_at'])}. Có hiệu lực ngay, quản lý được báo.',
+        'Đổi ca',
+      );
+      if (!ok || !mounted) return;
+      await _run(
+        () => r.swapToOpenShift(mine['id'] as int, target['id'] as int),
+        'Đã đổi sang ca mới. Ca đã có trong lịch của bạn.',
+      );
+      return;
+    }
     final reason = await showDialog<String>(
       context: context,
       builder: (_) => _SwapConfirmDialog(mine: mine, target: target),
@@ -603,12 +652,21 @@ class _ShiftSwapScreenState extends State<ShiftSwapScreen>
     final id = s['id'];
     final blocker = s['blocker'] as String?;
     final options = (s['options_count'] as int?) ?? 0;
-    final canPick = blocker == null && options > 0;
+    final openCount = (s['open_count'] as int?) ?? 0;
+    final canPick = blocker == null && (options > 0 || openCount > 0);
     final (label, color) = blocker != null
         ? (blocker, const Color(0xFF7F8C8D))
-        : options == 0
+        : options + openCount == 0
         ? ('Chưa có ca phù hợp để đổi', const Color(0xFF7F8C8D))
-        : ('$options ca có thể đổi', const Color(0xFF1E9E4A));
+        : (
+            openCount == 0
+                ? '$options ca có thể đổi'
+                : [
+                    if (options > 0) '$options ca của đồng nghiệp',
+                    if (openCount > 0) '$openCount ca còn trống',
+                  ].join(' • '),
+            const Color(0xFF1E9E4A),
+          );
     return Card(
       key: Key('swap-mine-$id'),
       margin: const EdgeInsets.only(bottom: 12),

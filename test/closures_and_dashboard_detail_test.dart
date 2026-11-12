@@ -24,6 +24,10 @@ void main() {
     admin = await repo('admin', 'Admin@12345');
     manager = await repo('manager', 'Manager@12345');
     quang = await repo('employee', 'Employee@12345');
+    // Báo cáo đóng ca thật: 2 chờ duyệt, 1 đã duyệt.
+    await f.addClosure(index: 0);
+    await f.addClosure(index: 1);
+    await f.addClosure(index: 2, status: 'approved');
   });
   tearDown(() => f.dispose());
 

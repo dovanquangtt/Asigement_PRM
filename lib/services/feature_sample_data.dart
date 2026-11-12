@@ -6,7 +6,6 @@ import 'payroll_source.dart';
 
 /// Nhãn riêng để lần nạp sau không nhân đôi hoặc sửa lại dữ liệu đã chỉnh.
 const featureSampleMarker = 'sample.features.v1';
-const closureSampleAsset = 'database/demo_assets/closure_sample.png';
 
 class SampleDataException implements Exception {
   const SampleDataException(this.message);
@@ -260,39 +259,6 @@ Future<bool> installFeatureSamples(
       return id;
     }
 
-    Future<void> closure(
-      String key,
-      String status, {
-      String? reviewNote,
-    }) async {
-      final name = key.split('/').last;
-      final record = (await tx.query(
-        'attendance_records',
-        where: 'id=?',
-        whereArgs: [records[key]],
-      )).single;
-      final submitted = _utc(record['check_out_at'])
-          .add(const Duration(minutes: 5));
-      final id = await tx.insert('shift_closures', {
-        'assignment_id': assignments[key],
-        'submitted_by': people[name]!['user_id'],
-        'note': '[DEMO] Đã vệ sinh khu vực, kiểm tra dụng cụ và bàn giao ca.',
-        'submitted_at': _stamp(submitted),
-        'status': status,
-        if (status != 'submitted')
-          'reviewed_by': name == 'admin' ? manager : admin,
-        if (status != 'submitted')
-          'reviewed_at': _stamp(submitted.add(const Duration(minutes: 5))),
-        'review_note': reviewNote,
-      });
-      await tx.insert('shift_closure_photos', {
-        'closure_id': id,
-        'file_url': 'asset:$closureSampleAsset',
-        'captured_at': _stamp(submitted),
-        'caption': 'Ảnh minh họa dữ liệu DEMO, không phải ảnh chụp thực tế.',
-      });
-    }
-
     for (var i = 0; i < 2; i++) {
       final day = historyStart.add(Duration(days: 1 + i * 2));
       final code = 'HISTORY_$i';
@@ -312,7 +278,6 @@ Future<bool> installFeatureSamples(
           at(day, 16),
           overtime: i == 1 && name == 'employee' ? 60 : 0,
         );
-        await closure(key, 'approved');
       }
     }
     // Hai lần xác thực không thành công để kiểm tra lịch sử, không tính vào công.
@@ -362,7 +327,6 @@ Future<bool> installFeatureSamples(
       overtime: 30,
     );
     await worked('READY_CLOSE/manager', at(yesterday, 8), at(yesterday, 16));
-    await closure('READY_CLOSE/manager', 'submitted');
     await shift(
       'RETRY_CLOSE',
       at(yesterday, 17),
@@ -376,11 +340,6 @@ Future<bool> installFeatureSamples(
       at(yesterday, 17),
       at(yesterday, 21),
       breakMinutes: 15,
-    );
-    await closure(
-      'RETRY_CLOSE/employee',
-      'rejected',
-      reviewNote: '[DEMO] Cần bổ sung ghi chú và chụp ảnh bàn giao rõ hơn.',
     );
     await shift(
       'PENDING_CLOSE',
@@ -396,7 +355,6 @@ Future<bool> installFeatureSamples(
       at(yesterday, 23),
       breakMinutes: 0,
     );
-    await closure('PENDING_CLOSE/employee', 'submitted');
     // Ca đang diễn ra không có sự kiện accepted: vẫn phải qua kiểm tra thật.
     await shift(
       'LIVE',
@@ -691,6 +649,3 @@ Future<bool> installFeatureSamples(
     return true;
   });
 }
-
-DateTime _utc(Object? value) =>
-    DateTime.parse('${value.toString().replaceFirst(' ', 'T')}Z');

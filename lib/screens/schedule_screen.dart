@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/workforce_repository.dart';
 import '../theme/app_colors.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/open_shifts_section.dart';
 import '../widgets/shift_day_dialog.dart';
 import '../widgets/shift_timeline.dart';
 import 'month_calendar_screen.dart';
@@ -274,6 +275,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
               heading('Lịch ca làm của bạn', 'LỊCH PHÂN CÔNG & XIN NGHỈ'),
+              if (r.session.role == 'Nhân viên')
+                OpenShiftsSection(
+                  key: ValueKey(widget.reloadToken),
+                  repository: r,
+                  onRegistered: _reload,
+                ),
 
               if (r.session.role != 'Nhân viên') ...[
                 Container(

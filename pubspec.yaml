@@ -78,7 +78,6 @@ flutter:
   assets:
     - assets/branding/anh_em_quan.jpg
     - database/prm_database.db
-    - database/demo_assets/
     - assets/fonts/
 
   # To add assets to your application, add an assets section, like this:
